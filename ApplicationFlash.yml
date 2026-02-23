@@ -1,0 +1,12 @@
+flash:
+  express:
+    mch-id: YOUR_MCH_ID              # e.g. AA0007
+    secret-key: YOUR_SECRET_KEY      # from Flash Express support
+    warehouse-no: YOUR_WAREHOUSE_NO  # from getAllWarehouses API
+    base-url: https://open-api-tra.flashexpress.ph  # sandbox
+    # base-url: https://open-api.flashexpress.ph    # production
+
+    # Your store/warehouse pickup address (shipper src address for rate estimation)
+    src-province-name: Metro Manila
+    src-city-name: Taguig City
+    src-postal-code: 1634
