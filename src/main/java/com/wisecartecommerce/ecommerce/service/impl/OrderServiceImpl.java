@@ -11,6 +11,8 @@ import com.wisecartecommerce.ecommerce.repository.*;
 import com.wisecartecommerce.ecommerce.service.EmailService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
+import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
+import com.wisecartecommerce.ecommerce.util.CouponValidator;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 import com.wisecartecommerce.ecommerce.util.ShippingWeightCalculator;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,8 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository userRepository;
     private final PaymentRepository paymentRepository;
     private final ProductVariationRepository productVariationRepository;
+    private final CouponRepository couponRepository;
+    private final CouponUsageRepository couponUsageRepository;
 
     // ── Services ───────────────────────────────────────────────────────────────
     private final EmailService emailService;
@@ -49,13 +53,11 @@ public class OrderServiceImpl implements OrderService {
 
     // ── Utilities ──────────────────────────────────────────────────────────────
     private final ShippingWeightCalculator weightCalculator;
+    private final CouponValidator couponValidator;
 
     // ── Constants ──────────────────────────────────────────────────────────────
-    /** Orders at or above this amount ship free. */
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("2500");
-    /** Philippines VAT. */
     private static final BigDecimal VAT_RATE = new BigDecimal("0.12");
-    /** Flat fallback when Flash Express API is unreachable. */
     private static final BigDecimal FALLBACK_SHIPPING = new BigDecimal("150.00");
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -82,41 +84,34 @@ public class OrderServiceImpl implements OrderService {
 
         // ── Validate stock + build line items ─────────────────────────────────
         List<OrderItem> orderItems = new ArrayList<>();
-        Map<Long, Integer> stockUpdates = new HashMap<>(); // For products
-        Map<Long, Integer> variationStockUpdates = new HashMap<>(); // For variations
+        Map<Long, Integer> stockUpdates = new HashMap<>();
+        Map<Long, Integer> variationStockUpdates = new HashMap<>();
 
         for (CartItem cartItem : cart.getItems()) {
             Product product = cartItem.getProduct();
-            ProductVariation variation = cartItem.getVariation(); // Get the variation
+            ProductVariation variation = cartItem.getVariation();
 
             if (!product.isActive())
                 throw new CustomException("Product '" + product.getName() + "' is no longer available");
 
-            // Check variation stock if this cart item has a variation
             if (variation != null) {
                 if (!variation.isActive())
                     throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
                 if (variation.getStockQuantity() < cartItem.getQuantity())
                     throw new CustomException("Insufficient stock for '" + product.getName() +
-                            " (" + variation.getName() + ")'" + ". Available: " + variation.getStockQuantity());
-
-                // Track variation stock update
+                            " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
                 variationStockUpdates.put(variation.getId(),
                         variation.getStockQuantity() - cartItem.getQuantity());
             } else {
-                // Fall back to product stock if no variation (for backward compatibility)
                 if (product.getStockQuantity() < cartItem.getQuantity())
                     throw new CustomException("Insufficient stock for '" + product.getName()
                             + "'. Available: " + product.getStockQuantity());
-
-                // Track product stock update
                 stockUpdates.put(product.getId(), product.getStockQuantity() - cartItem.getQuantity());
             }
 
-            // Create order item with variation info
             OrderItem orderItem = OrderItem.builder()
                     .product(product)
-                    .variation(variation) // You'll need to add this field to OrderItem entity
+                    .variation(variation)
                     .quantity(cartItem.getQuantity())
                     .price(cartItem.getPrice())
                     .subtotal(cartItem.getSubtotal())
@@ -126,18 +121,48 @@ public class OrderServiceImpl implements OrderService {
             product.setSoldCount(product.getSoldCount() + cartItem.getQuantity());
         }
 
-        // ── Shipping via Flash Express ─────────────────────────────────────────
-        BigDecimal shippingAmount = resolveShippingFee(
-                request.getShippingFee(),
-                request.getExpressCategory(),
-                shippingAddress,
-                cart.getSubtotal(),
-                cart.getItems());
+        BigDecimal subtotal = cart.getSubtotal();
 
-        // ── Tax (12% VAT) ──────────────────────────────────────────────────────
-        BigDecimal taxAmount = cart.getSubtotal()
+        // ── Coupon ────────────────────────────────────────────────────────────
+        String couponCode = cart.getCouponCode();
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        boolean couponFreeShipping = false;
+        CouponValidationResult couponResult = null;
+
+        if (couponCode != null && !couponCode.isBlank()) {
+            try {
+                couponResult = couponValidator.validate(couponCode, subtotal, user.getId());
+                discountAmount = couponResult.getDiscountAmount();
+                couponFreeShipping = couponResult.isFreeShipping();
+                log.info("Coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
+            } catch (CustomException e) {
+                // Coupon became invalid between cart-apply and checkout — just skip it
+                log.warn("Coupon '{}' invalid at checkout: {}", couponCode, e.getMessage());
+                couponCode = null;
+            }
+        }
+
+        // ── Shipping ──────────────────────────────────────────────────────────
+        BigDecimal shippingAmount;
+        if (couponFreeShipping) {
+            shippingAmount = BigDecimal.ZERO;
+            log.info("Free shipping applied via coupon '{}'", couponCode);
+        } else {
+            shippingAmount = resolveShippingFee(
+                    request.getShippingFee(),
+                    request.getExpressCategory(),
+                    shippingAddress,
+                    subtotal,
+                    cart.getItems());
+        }
+
+        // ── Tax (12% VAT on subtotal after discount) ───────────────────────────
+        BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+        BigDecimal taxAmount = taxableAmount
                 .multiply(VAT_RATE)
                 .setScale(2, BigDecimal.ROUND_HALF_UP);
+
+        BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
         // ── Build + persist order ──────────────────────────────────────────────
         Order order = Order.builder()
@@ -146,17 +171,16 @@ public class OrderServiceImpl implements OrderService {
                 .shippingAddress(shippingAddress)
                 .billingAddress(billingAddress)
                 .paymentMethod(request.getPaymentMethod())
-                .couponCode(cart.getCouponCode())
+                .couponCode(couponCode)
                 .notes(request.getNotes())
                 .status(OrderStatus.PENDING)
-                .totalAmount(cart.getSubtotal())
-                .discountAmount(cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO)
+                .totalAmount(subtotal)
+                .discountAmount(discountAmount)
                 .shippingAmount(shippingAmount)
                 .taxAmount(taxAmount)
+                .finalAmount(finalAmount)
                 .items(new ArrayList<>())
                 .build();
-
-        order.calculateTotals();
 
         for (OrderItem item : orderItems) {
             item.setOrder(order);
@@ -165,20 +189,23 @@ public class OrderServiceImpl implements OrderService {
 
         Order saved = orderRepository.save(order);
 
-        // Update product stock (for items without variations)
+        // Update stock
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
             productRepository.findById(entry.getKey()).ifPresent(p -> {
                 p.setStockQuantity(entry.getValue());
                 productRepository.save(p);
             });
         }
-
-        // Update variation stock
         for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
             productVariationRepository.findById(entry.getKey()).ifPresent(v -> {
                 v.setStockQuantity(entry.getValue());
                 productVariationRepository.save(v);
             });
+        }
+
+        // ── Record coupon usage + increment counter ────────────────────────────
+        if (couponResult != null) {
+            recordCouponUsage(couponResult.getCoupon(), user, null, saved);
         }
 
         // Clear cart
@@ -191,8 +218,8 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         emailService.sendOrderConfirmationEmail(saved);
-        log.info("Order created: {} | user: {} | shipping: ₱{}", saved.getOrderNumber(), user.getEmail(),
-                shippingAmount);
+        log.info("Order created: {} | user: {} | discount: ₱{} | shipping: ₱{}",
+                saved.getOrderNumber(), user.getEmail(), discountAmount, shippingAmount);
 
         return mapToOrderResponse(saved);
     }
@@ -203,13 +230,14 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    @SuppressWarnings("null")
     public OrderResponse createGuestOrder(GuestOrderRequest request) {
 
-        // Save shipping address
+        // ── Save shipping address ─────────────────────────────────────────────
         Address shippingAddress = addressRepository.save(Address.builder()
                 .firstName(request.getGuestFirstName())
                 .lastName(request.getGuestLastName())
-                .phone(request.getGuestPhone())
+                .phone(request.getGuestPhone() != null ? request.getGuestPhone() : request.getPhone())
                 .addressLine1(request.getAddressLine1())
                 .addressLine2(request.getAddressLine2())
                 .city(request.getCity())
@@ -220,7 +248,7 @@ public class OrderServiceImpl implements OrderService {
                 .isDefault(false)
                 .build());
 
-        // Build line items
+        // ── Build line items ──────────────────────────────────────────────────
         List<OrderItem> orderItems = new ArrayList<>();
         int totalWeightGrams = 0;
 
@@ -230,22 +258,43 @@ public class OrderServiceImpl implements OrderService {
 
             if (!product.isActive())
                 throw new CustomException("Product '" + product.getName() + "' is no longer available");
-            if (product.getStockQuantity() < itemReq.getQuantity())
-                throw new CustomException("Insufficient stock for '" + product.getName() + "'");
 
-            BigDecimal price = product.getDiscountedPrice();
-            BigDecimal subtotal = price.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
+            BigDecimal price;
+            ProductVariation variation = null;
+
+            if (itemReq.getVariationId() != null) {
+                variation = productVariationRepository.findById(itemReq.getVariationId())
+                        .orElseThrow(() -> new ResourceNotFoundException(
+                                "Variation not found: " + itemReq.getVariationId()));
+
+                if (!variation.isActive())
+                    throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
+                if (variation.getStockQuantity() < itemReq.getQuantity())
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+
+                variation.setStockQuantity(variation.getStockQuantity() - itemReq.getQuantity());
+                productVariationRepository.save(variation);
+                price = (variation.getPrice() != null) ? variation.getPrice() : product.getDiscountedPrice();
+            } else {
+                if (product.getStockQuantity() < itemReq.getQuantity())
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + "'. Available: " + product.getStockQuantity());
+                product.setStockQuantity(product.getStockQuantity() - itemReq.getQuantity());
+                price = product.getDiscountedPrice();
+            }
+
+            BigDecimal itemSubtotal = price.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
 
             orderItems.add(OrderItem.builder()
                     .product(product)
+                    .variation(variation)
                     .quantity(itemReq.getQuantity())
                     .price(price)
-                    .subtotal(subtotal)
+                    .subtotal(itemSubtotal)
                     .build());
 
             totalWeightGrams += product.getWeightGrams() * itemReq.getQuantity();
-
-            product.setStockQuantity(product.getStockQuantity() - itemReq.getQuantity());
             product.setSoldCount(product.getSoldCount() + itemReq.getQuantity());
             productRepository.save(product);
         }
@@ -254,9 +303,30 @@ public class OrderServiceImpl implements OrderService {
                 .map(OrderItem::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Shipping
+        // ── Coupon (guests: no per-user limit check, pass userId = null) ───────
+        String couponCode = request.getCouponCode();
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        boolean couponFreeShipping = false;
+        CouponValidationResult couponResult = null;
+
+        if (couponCode != null && !couponCode.isBlank()) {
+            try {
+                couponResult = couponValidator.validate(couponCode, subtotal, null); // null = guest
+                discountAmount = couponResult.getDiscountAmount();
+                couponFreeShipping = couponResult.isFreeShipping();
+                log.info("Guest coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
+            } catch (CustomException e) {
+                throw new CustomException("Coupon error: " + e.getMessage());
+            }
+        }
+
+        // ── Shipping ──────────────────────────────────────────────────────────
         BigDecimal shippingAmount;
-        if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
+        BigDecimal taxableSubtotal = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+
+        if (couponFreeShipping) {
+            shippingAmount = BigDecimal.ZERO;
+        } else if (taxableSubtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             shippingAmount = BigDecimal.ZERO;
         } else if (request.getShippingFee() != null && request.getShippingFee().compareTo(BigDecimal.ZERO) > 0) {
             shippingAmount = request.getShippingFee();
@@ -275,8 +345,8 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        BigDecimal taxAmount = subtotal.multiply(VAT_RATE).setScale(2, BigDecimal.ROUND_HALF_UP);
-        BigDecimal finalAmount = subtotal.add(shippingAmount).add(taxAmount);
+        BigDecimal taxAmount = taxableSubtotal.multiply(VAT_RATE).setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal finalAmount = taxableSubtotal.add(shippingAmount).add(taxAmount);
 
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
@@ -286,11 +356,11 @@ public class OrderServiceImpl implements OrderService {
                 .guestPhone(request.getGuestPhone())
                 .shippingAddress(shippingAddress)
                 .paymentMethod(request.getPaymentMethod())
-                .couponCode(request.getCouponCode())
+                .couponCode(couponCode)
                 .notes(request.getNotes())
                 .status(OrderStatus.PENDING)
                 .totalAmount(subtotal)
-                .discountAmount(BigDecimal.ZERO)
+                .discountAmount(discountAmount)
                 .shippingAmount(shippingAmount)
                 .taxAmount(taxAmount)
                 .finalAmount(finalAmount)
@@ -303,22 +373,49 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
-        log.info("Guest order created: {} | {} | shipping: ₱{}", saved.getOrderNumber(), request.getGuestEmail(),
-                shippingAmount);
+
+        // ── Record coupon usage for guests (no user — increment global counter only)
+        if (couponResult != null) {
+            recordCouponUsage(couponResult.getCoupon(), null, request.getGuestEmail(), saved);
+        }
+
+        log.info("Guest order created: {} | {} | discount: ₱{} | shipping: ₱{}",
+                saved.getOrderNumber(), request.getGuestEmail(), discountAmount, shippingAmount);
         return mapToGuestOrderResponse(saved);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // Shipping resolution logic
+    // Coupon usage recording
     // ══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Priority:
-     * 1. Free shipping if subtotal >= ₱2,500
-     * 2. Client-provided pre-calculated fee (from /shipping/estimate call)
-     * 3. Live Flash Express API call using cart weight + destination
-     * 4. ₱150 flat-rate fallback if Flash API is unavailable
+     * Increments the coupon's global usage counter and, for authenticated users,
+     * writes a CouponUsage row so per-user limits can be enforced.
      */
+    private void recordCouponUsage(Coupon coupon, User user, String guestEmail, Order order) {
+        // Increment global counter
+        coupon.setCurrentUsageCount(coupon.getCurrentUsageCount() + 1);
+        couponRepository.save(coupon);
+
+        // Write usage record only for authenticated users
+        // (guests have no user account to track against)
+        if (user != null) {
+            CouponUsage usage = CouponUsage.builder()
+                    .user(user)
+                    .coupon(coupon)
+                    .order(order)
+                    .build();
+            couponUsageRepository.save(usage);
+            log.info("Coupon usage recorded: {} | user: {}", coupon.getCode(), user.getEmail());
+        } else {
+            log.info("Coupon usage recorded (global only): {} | guest: {}", coupon.getCode(), guestEmail);
+        }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Shipping resolution
+    // ══════════════════════════════════════════════════════════════════════════
+
     private BigDecimal resolveShippingFee(
             BigDecimal clientFee,
             Integer expressCategory,
@@ -339,18 +436,12 @@ public class OrderServiceImpl implements OrderService {
         try {
             int weightGrams = weightCalculator.calculateCartWeightGrams(cartItems);
             int category = expressCategory != null ? expressCategory : 1;
-
-            FlashShippingRateResponse rate = flashShippingService.estimateRate(
-                    destination, weightGrams, category);
-
+            FlashShippingRateResponse rate = flashShippingService.estimateRate(destination, weightGrams, category);
             BigDecimal fee = rate.getShippingFee();
-            if (rate.isUpCountry() && rate.getUpCountryFee() != null) {
+            if (rate.isUpCountry() && rate.getUpCountryFee() != null)
                 fee = fee.add(rate.getUpCountryFee());
-            }
-
             log.info("Flash Express: ₱{} ({}g, cat {})", fee, weightGrams, category);
             return fee;
-
         } catch (Exception e) {
             log.warn("Flash Express unavailable, using fallback: {}", e.getMessage());
             return FALLBACK_SHIPPING;
@@ -358,7 +449,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // ══════════════════════════════════════════════════════════════════════════
-    // Read / status / cancel operations (unchanged from original)
+    // Read / status / cancel operations
     // ══════════════════════════════════════════════════════════════════════════
 
     @Override
@@ -671,7 +762,6 @@ public class OrderServiceImpl implements OrderService {
                 .build();
     }
 
-
     private OrderResponse.OrderItemResponse mapToItemResponse(OrderItem item) {
         Product product = item.getProduct();
         String imageUrl = product.getImageUrl();
@@ -679,9 +769,8 @@ public class OrderServiceImpl implements OrderService {
 
         if (item.getVariation() != null) {
             ProductVariation variation = item.getVariation();
-            if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank()) {
+            if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank())
                 imageUrl = variation.getImageUrl();
-            }
             variationName = variation.getName();
         }
 
@@ -711,8 +800,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse.AddressResponse mapToAddressResponse(Address address) {
-        if (address == null)
-            return null;
+        if (address == null) return null;
         return OrderResponse.AddressResponse.builder()
                 .id(address.getId())
                 .firstName(address.getFirstName())
