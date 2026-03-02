@@ -58,6 +58,11 @@ public class SecurityConfig {
                                                                 "/api/customer/shipping/estimate/**")
                                                 .permitAll()
 
+                                                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                                                "/customer/orders/*/track",
+                                                                "/api/customer/orders/*/track")
+                                                .permitAll()
+
                                                 // Product public endpoints
                                                 .requestMatchers(
                                                                 "/products/**", "/api/products/**")

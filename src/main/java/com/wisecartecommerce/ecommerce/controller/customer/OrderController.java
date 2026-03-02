@@ -67,12 +67,6 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success("Order retrieved", response));
     }
 
-    @GetMapping("/{orderNumber}/track")
-    @Operation(summary = "Track order by order number")
-    public ResponseEntity<ApiResponse<OrderResponse>> trackOrder(@PathVariable String orderNumber) {
-        OrderResponse response = orderService.trackOrder(orderNumber);
-        return ResponseEntity.ok(ApiResponse.success("Order tracking retrieved", response));
-    }
 
     @PostMapping("/{id}/cancel")
     @Operation(summary = "Cancel order")

@@ -4,7 +4,7 @@ spring:
     username: root
     password: wisecart
     driver-class-name: com.mysql.cj.jdbc.Driver
-  
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -13,7 +13,7 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQL8Dialect
         format_sql: true
-  
+
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -33,11 +33,15 @@ spring:
             enable: true
 
 app:
+  admin:
+    email: admin@wisecart.com
+    password: admin123
+    firstName: Admin
+    lastName: User
   jwt:
     secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
     expiration: 86400000
     refresh-expiration: 604800000
-  
   file:
     upload-dir: ./uploads-dev
     max-image-size: 5242880
@@ -48,7 +52,15 @@ server:
   servlet:
     context-path: /api
 
-logging:
-  level:
-    com.wisecartecommerce: DEBUG
-    org.hibernate.SQL: DEBUG
+flash:
+  express:
+    mch-id: BA0097
+    secret-key: cde04a4490b14447f4b2f4966ba5d77a8d3fc7470243511aa00c75a269c55890
+    warehouse-no: ""
+    base-url: https://open-api-tra.flashexpress.ph
+    src-province-name: Metro Manila
+    src-city-name: Taguig City
+    src-postal-code: 1634
+    src-detail-address: "Unit 81E, Udings Compound St. Bernadette College of Alabang East Service Road, Cupang Muntinlupa City, Metro Manila, Philippines 1780"
+    src-name: "Alabang Warehouse"
+    src-phone: "09636026511"

@@ -65,6 +65,10 @@ public class Product {
     @Builder.Default
     private Integer viewCount = 0;
 
+    private BigDecimal lengthCm;
+    private BigDecimal widthCm;
+    private BigDecimal heightCm;
+
     /**
      * Weight in kilograms — used by Flash Express shipping estimation.
      * Falls back to 500 g if null or zero.
@@ -132,7 +136,8 @@ public class Product {
 
     /**
      * Returns weight in grams for Flash Express API calls.
-     * Uses variation weight if available; falls back to product weight; then 500 g default.
+     * Uses variation weight if available; falls back to product weight; then 500 g
+     * default.
      */
     public int getWeightGrams() {
         if (weightKg == null || weightKg.compareTo(BigDecimal.ZERO) <= 0) {

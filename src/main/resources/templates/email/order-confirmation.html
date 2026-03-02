@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Order Confirmation</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
+    .container { max-width: 600px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .header { background: #e53e3e; color: white; padding: 30px; text-align: center; }
+    .header h1 { margin: 0; font-size: 24px; }
+    .header p { margin: 5px 0 0; opacity: 0.9; }
+    .body { padding: 30px; }
+    .order-box { background: #f8f8f8; border-radius: 6px; padding: 20px; margin: 20px 0; }
+    .order-box h2 { margin: 0 0 15px; font-size: 16px; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+    .detail-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+    .detail-row:last-child { border-bottom: none; }
+    .detail-label { color: #666; font-size: 14px; }
+    .detail-value { font-weight: bold; font-size: 14px; color: #333; }
+    .tracking-box { background: #ebf8ff; border: 1px solid #90cdf4; border-radius: 6px; padding: 15px 20px; margin: 20px 0; }
+    .tracking-box p { margin: 0; font-size: 14px; color: #2b6cb0; }
+    .tracking-box strong { font-size: 18px; display: block; margin-top: 5px; }
+    .footer { background: #f8f8f8; padding: 20px 30px; text-align: center; font-size: 12px; color: #999; }
+    .btn { display: inline-block; background: #e53e3e; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; font-weight: bold; margin: 15px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <h1>✓ Order Confirmed!</h1>
+      <p>Thank you for your purchase.</p>
+    </div>
+
+    <div class="body">
+
+      <p>Hi <span th:text="${order.guestFirstName != null ? order.guestFirstName : 'there'}">there</span>,</p>
+      <p>Your order has been placed and is being prepared for shipment.</p>
+
+      <div class="order-box">
+        <h2>Order Details</h2>
+        <div class="detail-row">
+          <span class="detail-label">Order Number</span>
+          <span class="detail-value" th:text="${order.orderNumber}">ORD123</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Payment Method</span>
+          <span class="detail-value" th:text="${order.paymentMethod}">COD</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Shipping Fee</span>
+          <span class="detail-value" th:text="'₱' + ${order.shippingAmount}">₱79</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Total Amount</span>
+          <span class="detail-value" th:text="'₱' + ${order.finalAmount}">₱500</span>
+        </div>
+      </div>
+
+      <div class="tracking-box" th:if="${order.trackingNumber != null and order.trackingNumber.startsWith('P')}">
+        <p>Your Flash Express tracking number:</p>
+        <strong th:text="${order.trackingNumber}">P612610SCBAA</strong>
+        <p style="margin-top:8px; font-size:12px;">You can track your parcel at <a href="https://www.flashexpress.ph/tracking/" target="_blank">flashexpress.ph/tracking</a></p>
+      </div>
+
+      <div class="order-box" th:if="${order.shippingCarrier != null}">
+        <h2>Shipping Info</h2>
+        <div class="detail-row">
+          <span class="detail-label">Carrier</span>
+          <span class="detail-value" th:text="${order.shippingCarrier}">Flash Express</span>
+        </div>
+        <div class="detail-row" th:if="${order.estimatedDelivery != null}">
+          <span class="detail-label">Estimated Delivery</span>
+          <span class="detail-value" th:text="${#temporals.format(order.estimatedDelivery, 'MMMM dd, yyyy')}">March 5, 2026</span>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="footer">
+      <p>If you have questions about your order, please contact us.</p>
+      <p>© 2026 Wisecart. All rights reserved.</p>
+    </div>
+
+  </div>
+</body>
+</html>

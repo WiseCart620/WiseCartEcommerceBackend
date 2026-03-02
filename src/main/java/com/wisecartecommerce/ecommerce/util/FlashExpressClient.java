@@ -19,10 +19,6 @@ public class FlashExpressClient {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * POST application/x-www-form-urlencoded, returns parsed JSON as Map.
-     * Spring's RestTemplate handles URL-encoding automatically via MultiValueMap.
-     */
     public Map<String, Object> post(String url, Map<String, String> params) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         params.forEach(form::add);

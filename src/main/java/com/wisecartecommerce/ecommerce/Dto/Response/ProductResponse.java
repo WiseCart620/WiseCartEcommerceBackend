@@ -48,6 +48,9 @@ public class ProductResponse {
     private Object reviewSummary;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private BigDecimal lengthCm;
+    private BigDecimal widthCm;
+    private BigDecimal heightCm;
 
     @Data
     @Builder

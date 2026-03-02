@@ -1,0 +1,62 @@
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQL8Dialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    clean-disabled: true
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+app:
+  admin:
+    email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
+    firstName: ${ADMIN_FIRST_NAME:Admin}
+    lastName: ${ADMIN_LAST_NAME:User}
+  jwt:
+    secret: ${JWT_SECRET}
+    expiration: 86400000
+    refresh-expiration: 604800000
+  file:
+    upload-dir: ${FILE_UPLOAD_DIR:/uploads}
+    max-image-size: 5242880
+    max-document-size: 10485760
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+flash:
+  express:
+    mch-id: ${FLASH_EXPRESS_MCH_ID}
+    secret-key: ${FLASH_EXPRESS_SECRET_KEY}
+    warehouse-no: ${FLASH_EXPRESS_WAREHOUSE_NO:}
+    base-url: https://open-api.flashexpress.ph
+    src-province-name: ${FLASH_EXPRESS_SRC_PROVINCE}
+    src-city-name: ${FLASH_EXPRESS_SRC_CITY}
+    src-postal-code: ${FLASH_EXPRESS_SRC_POSTAL}

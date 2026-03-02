@@ -11,21 +11,15 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Calculates total shipment weight from cart or order items.
- * Checks variation-level weight first, then product-level weight,
- * then falls back to DEFAULT_ITEM_WEIGHT_GRAMS.
- */
 @Component
 @RequiredArgsConstructor
 public class ShippingWeightCalculator {
 
     private final ProductVariationRepository productVariationRepository;
 
-    /** Fallback weight per line item when no weight data exists. */
+
     public static final int DEFAULT_ITEM_WEIGHT_GRAMS = 500;
 
-    // ── Cart ──────────────────────────────────────────────────────────────────
 
     public int calculateCartWeightGrams(List<CartItem> items) {
         int total = 0;
@@ -45,7 +39,6 @@ public class ShippingWeightCalculator {
         return item.getProduct().getWeightGrams();
     }
 
-    // ── Order ─────────────────────────────────────────────────────────────────
 
     public int calculateOrderWeightGrams(List<OrderItem> items) {
         int total = 0;
@@ -61,7 +54,7 @@ public class ShippingWeightCalculator {
         return Math.max(total, DEFAULT_ITEM_WEIGHT_GRAMS);
     }
 
-    // ── Raw list of (weightGrams, quantity) pairs (for guest orders) ──────────
+
 
     public int calculateRawWeightGrams(int weightGramsPerItem, int quantity) {
         return Math.max(weightGramsPerItem * quantity, DEFAULT_ITEM_WEIGHT_GRAMS);

@@ -36,6 +36,8 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                         @Param("customerEmail") String customerEmail,
                         Pageable pageable);
 
+        Optional<Order> findByTrackingNumber(String trackingNumber);
+
         @Query("SELECT o FROM Order o WHERE DATE(o.createdAt) = CURRENT_DATE")
         Page<Order> findTodayOrders(Pageable pageable);
 

@@ -62,8 +62,8 @@ public class ShippingController {
     @Data
     public static class EstimateByAddressRequest {
         private Long addressId;
-        private int weightGrams;        // total weight of order in grams
-        private Integer expressCategory; // 1=standard, 2=on-time, 4=bulky
+        private int weightGrams;
+        private Integer expressCategory;
     }
 
     @Data

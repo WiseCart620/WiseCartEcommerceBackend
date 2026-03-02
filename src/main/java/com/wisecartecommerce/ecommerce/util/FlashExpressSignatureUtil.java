@@ -8,15 +8,7 @@ import java.util.stream.Collectors;
 
 public class FlashExpressSignatureUtil {
 
-    /**
-     * Generates SHA256 signature per Flash Express spec:
-     * 1. Sort params by ASCII order (TreeMap)
-     * 2. Skip blank/null values
-     * 3. Concatenate as key=value&key=value...&key={apiKey}
-     * 4. SHA256 → uppercase
-     */
     public static String generateSign(Map<String, String> params, String apiKey) {
-        // TreeMap sorts keys by ASCII (natural order)
         Map<String, String> sorted = new TreeMap<>(params);
 
         String stringA = sorted.entrySet().stream()

@@ -2,6 +2,7 @@ package com.wisecartecommerce.ecommerce.service.impl;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.entity.*;
@@ -188,6 +189,13 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        orderRepository.flush();
+
+        int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
+        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+        assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
+        log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
+        saved = orderRepository.save(saved);
 
         // Update stock
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
@@ -303,7 +311,6 @@ public class OrderServiceImpl implements OrderService {
                 .map(OrderItem::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // ── Coupon (guests: no per-user limit check, pass userId = null) ───────
         String couponCode = request.getCouponCode();
         BigDecimal discountAmount = BigDecimal.ZERO;
         boolean couponFreeShipping = false;
@@ -373,12 +380,19 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+        orderRepository.flush();
 
-        // ── Record coupon usage for guests (no user — increment global counter only)
+        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+        int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
+        assignFlashOrderNumber(saved, shippingAddress, weight, category);
+        log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
+        saved = orderRepository.save(saved);
+
         if (couponResult != null) {
             recordCouponUsage(couponResult.getCoupon(), null, request.getGuestEmail(), saved);
         }
 
+        emailService.sendOrderConfirmationEmail(saved);
         log.info("Guest order created: {} | {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), request.getGuestEmail(), discountAmount, shippingAmount);
         return mapToGuestOrderResponse(saved);
@@ -548,7 +562,9 @@ public class OrderServiceImpl implements OrderService {
         switch (status) {
             case SHIPPED -> {
                 order.setShippingCarrier("Flash Express");
-                order.setTrackingNumber("FE" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
+                if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
+                    order.setTrackingNumber("FE" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
+                }
                 order.setEstimatedDelivery(LocalDateTime.now().plusDays(3));
             }
             case DELIVERED -> order.setDeliveredAt(LocalDateTime.now());
@@ -800,7 +816,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse.AddressResponse mapToAddressResponse(Address address) {
-        if (address == null) return null;
+        if (address == null)
+            return null;
         return OrderResponse.AddressResponse.builder()
                 .id(address.getId())
                 .firstName(address.getFirstName())
@@ -814,5 +831,25 @@ public class OrderServiceImpl implements OrderService {
                 .country(address.getCountry())
                 .companyName(address.getCompanyName())
                 .build();
+    }
+
+    private void assignFlashOrderNumber(Order saved, Address shippingAddress, int weightGrams, int expressCategory) {
+        try {
+            FlashOrderResult flashOrder = flashShippingService.createOrder(
+                    saved, shippingAddress, weightGrams, expressCategory);
+
+            if (flashOrder != null && flashOrder.getPno() != null) {
+                saved.setOrderNumber(flashOrder.getPno());
+                saved.setTrackingNumber(flashOrder.getPno());
+                saved.setShippingCarrier("Flash Express");
+                log.info("Flash order created: PNO={}", flashOrder.getPno());
+            } else {
+                saved.setOrderNumber(generateOrderNumber());
+                log.warn("Flash order creation returned null, using local order number");
+            }
+        } catch (Exception e) {
+            saved.setOrderNumber(generateOrderNumber());
+            log.warn("Flash order creation failed, using local order number: {}", e.getMessage());
+        }
     }
 }

@@ -13,14 +13,12 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        // Serve uploaded files directly from disk
         String uploadLocation = "file:" + uploadDir + "/";
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(uploadLocation)
                 .setCachePeriod(3600)
                 .resourceChain(true);
 
-        // Swagger UI
         registry.addResourceHandler("/swagger-ui.html")
                 .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")

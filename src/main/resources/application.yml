@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: ecommerce
+  profiles:
+    active: dev
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  web:
+    resources:
+      add-mappings: false
+
+logging:
+  level:
+    org.springframework.security: TRACE
+    org.springframework.web: DEBUG
+    com.wisecartecommerce: DEBUG
+    com.wisecartecommerce.ecommerce.config: DEBUG
+    org.hibernate.SQL: DEBUG
