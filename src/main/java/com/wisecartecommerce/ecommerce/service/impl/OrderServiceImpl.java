@@ -2,8 +2,10 @@ package com.wisecartecommerce.ecommerce.service.impl;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.entity.*;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
@@ -25,6 +27,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -851,5 +854,58 @@ public class OrderServiceImpl implements OrderService {
             saved.setOrderNumber(generateOrderNumber());
             log.warn("Flash order creation failed, using local order number: {}", e.getMessage());
         }
+    }
+
+
+    @Override
+    @Transactional(readOnly = true)
+    public CustomerTrackingResponse getCustomerTracking(String orderNumber) {
+        // 1. Load and verify ownership
+        User user = getCurrentUser();
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderNumber));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only track your own orders");
+        }
+
+        String pno = order.getTrackingNumber();
+
+        // 2. Build base response — always returned even without a PNO
+        CustomerTrackingResponse.CustomerTrackingResponseBuilder builder = CustomerTrackingResponse.builder()
+                .orderNumber(order.getOrderNumber())
+                .trackingNumber(pno)
+                .shippingCarrier(order.getShippingCarrier())
+                .orderStatus(order.getStatus());
+
+
+        // 3. If no PNO yet (order still being packed), return without Flash data
+        if (pno == null || pno.isBlank()) {
+            return builder.flashTracking(null).build();
+        }
+
+        // 4. Fetch live Flash tracking
+        try {
+            FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
+
+            CustomerTrackingResponse.FlashTracking flashTracking = CustomerTrackingResponse.FlashTracking.builder()
+                    .pno(flashData.getPno())
+                    .origPno(flashData.getOrigPno())
+                    .returnedPno(flashData.getReturnedPno())
+                    .state(flashData.getState())
+                    .stateText(flashData.getStateText())
+                    .stateChangeAt(flashData.getStateChangeAt())
+                    .routes(flashData.getRoutes())
+                    .build();
+
+            builder.flashTracking(flashTracking);
+
+        } catch (Exception e) {
+            // Flash API unavailable — still return order info, just no live tracking
+            log.warn("Flash tracking unavailable for PNO={}: {}", pno, e.getMessage());
+            builder.flashTracking(null);
+        }
+
+        return builder.build();
     }
 }

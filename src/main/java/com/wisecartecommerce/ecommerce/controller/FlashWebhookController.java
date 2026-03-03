@@ -2,6 +2,7 @@ package com.wisecartecommerce.ecommerce.controller;
 
 import com.wisecartecommerce.ecommerce.entity.Order;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.service.impl.PaymentServiceImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import java.util.Optional;
 public class FlashWebhookController {
 
     private final OrderRepository orderRepository;
+    private final PaymentServiceImpl paymentService;
 
     @PostMapping("/status")
     public ResponseEntity<Map<String, String>> handleStatusWebhook(
@@ -34,7 +36,7 @@ public class FlashWebhookController {
                     pno, outTradeNo, stateStr, stateText);
 
             if (pno != null && stateStr != null) {
-                updateOrderStatus(pno, outTradeNo, stateStr, stateText);
+                updateOrderFromWebhook(pno, outTradeNo, stateStr, stateText);
             }
         } catch (Exception e) {
             log.error("Flash webhook processing error: {}", e.getMessage(), e);
@@ -57,7 +59,7 @@ public class FlashWebhookController {
                     pno, stateStr, stateText, routeAction, message);
 
             if (pno != null && stateStr != null) {
-                updateOrderStatus(pno, outTradeNo, stateStr, stateText);
+                updateOrderFromWebhook(pno, outTradeNo, stateStr, stateText);
             }
         } catch (Exception e) {
             log.error("Flash routes webhook error: {}", e.getMessage(), e);
@@ -65,47 +67,38 @@ public class FlashWebhookController {
         return ResponseEntity.ok(successResponse());
     }
 
-    private void updateOrderStatus(String pno, String outTradeNo,
-                                   String stateStr, String stateText) {
+    // ─── Core update logic ────────────────────────────────────────────────────
 
-        Optional<Order> orderOpt = orderRepository.findByTrackingNumber(pno);
-
-        if (orderOpt.isEmpty() && outTradeNo != null) {
-            try {
-                Long orderId = Long.parseLong(outTradeNo);
-                orderOpt = orderRepository.findById(orderId);
-            } catch (NumberFormatException ignored) {}
-        }
-
-        if (orderOpt.isEmpty()) {
-            log.warn("Flash webhook: order not found for PNO={} outTradeNo={}", pno, outTradeNo);
-            return;
-        }
-
-        Order order = orderOpt.get();
+    private void updateOrderFromWebhook(String pno, String outTradeNo,
+                                        String stateStr, String stateText) {
+        Order order = resolveOrder(pno, outTradeNo);
+        if (order == null) return;
 
         int flashState;
         try {
-            flashState = Integer.parseInt(stateStr);
+            flashState = Integer.parseInt(stateStr.trim());
         } catch (NumberFormatException e) {
             log.warn("Flash webhook: invalid state value '{}'", stateStr);
             return;
         }
 
-
         OrderStatus newStatus = switch (flashState) {
-            case 1   -> OrderStatus.PROCESSING;
-            case 50  -> OrderStatus.SHIPPED;
-            case 60  -> OrderStatus.SHIPPED;
-            case 70  -> OrderStatus.OUT_FOR_DELIVERY;
-            case 80  -> OrderStatus.DELIVERED;
-            case 90  -> OrderStatus.SHIPPED;
-            case 100 -> OrderStatus.RETURNED;
-            default  -> null;
+            case 1  -> OrderStatus.PROCESSING;
+            case 2  -> OrderStatus.SHIPPED;
+            case 3  -> OrderStatus.OUT_FOR_DELIVERY;
+            case 4  -> OrderStatus.SHIPPED;
+            case 5  -> OrderStatus.DELIVERED;
+            case 6  -> OrderStatus.SHIPPED;
+            case 7  -> OrderStatus.RETURNED;
+            case 8  -> OrderStatus.CANCELLED;
+            case 9  -> OrderStatus.CANCELLED;
+            case 98 -> OrderStatus.CANCELLED;
+            case 99 -> OrderStatus.PROCESSING;
+            default -> null;
         };
 
         if (newStatus == null) {
-            log.debug("Flash state {} has no mapping - skipping PNO={}", flashState, pno);
+            log.debug("Flash webhook state {} has no mapping - skipping PNO={}", flashState, pno);
             return;
         }
 
@@ -120,19 +113,52 @@ public class FlashWebhookController {
             return;
         }
 
-        log.info("Updating order {} status: {} -> {} (Flash state={} '{}')",
+        log.info("Updating order {} status: {} -> {} (Flash webhook state={} '{}')",
                 order.getOrderNumber(), order.getStatus(), newStatus, flashState, stateText);
 
         order.setStatus(newStatus);
 
         if (newStatus == OrderStatus.DELIVERED) {
             order.setDeliveredAt(LocalDateTime.now());
+
+            if (isCod(order.getPaymentMethod())) {
+                try {
+                    paymentService.completeCodPaymentOnDelivery(order);
+                } catch (Exception e) {
+                    log.error("Failed to complete COD payment for order {}: {}",
+                            order.getOrderNumber(), e.getMessage());
+                }
+            }
         }
+
         if (newStatus == OrderStatus.CANCELLED || newStatus == OrderStatus.RETURNED) {
             order.setCancelledAt(LocalDateTime.now());
         }
 
         orderRepository.save(order);
+    }
+
+    private boolean isCod(String paymentMethod) {
+        return "COD".equalsIgnoreCase(paymentMethod) ||
+               "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
+    }
+
+    private Order resolveOrder(String pno, String outTradeNo) {
+        Optional<Order> orderOpt = orderRepository.findByTrackingNumber(pno);
+
+        if (orderOpt.isEmpty() && outTradeNo != null) {
+            try {
+                Long orderId = Long.parseLong(outTradeNo);
+                orderOpt = orderRepository.findById(orderId);
+            } catch (NumberFormatException ignored) {}
+        }
+
+        if (orderOpt.isEmpty()) {
+            log.warn("Flash webhook: order not found for PNO={} outTradeNo={}", pno, outTradeNo);
+            return null;
+        }
+
+        return orderOpt.get();
     }
 
     private boolean isDowngrade(OrderStatus current, OrderStatus next) {

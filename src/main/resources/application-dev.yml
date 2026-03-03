@@ -11,8 +11,11 @@ spring:
     show-sql: true
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQL8Dialect
+        dialect: org.hibernate.dialect.MySQLDialect
         format_sql: true
+        type:
+          preferred_boolean_jdbc_type: BIT 
+        
 
   flyway:
     enabled: true
@@ -23,8 +26,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: dev-email@gmail.com
-    password: dev-password
+    username: sales@wisecart.ph
+    password: nbln johj clxk mned
     properties:
       mail:
         smtp:
@@ -59,8 +62,8 @@ flash:
     warehouse-no: ""
     base-url: https://open-api-tra.flashexpress.ph
     src-province-name: Metro Manila
-    src-city-name: Taguig City
+    src-city-name: Muntinlupa City
     src-postal-code: 1634
     src-detail-address: "Unit 81E, Udings Compound St. Bernadette College of Alabang East Service Road, Cupang Muntinlupa City, Metro Manila, Philippines 1780"
-    src-name: "Alabang Warehouse"
+    src-name: "WiseCart"
     src-phone: "09636026511"

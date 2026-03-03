@@ -51,6 +51,7 @@ public class ProductResponse {
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
+    private String label;
 
     @Data
     @Builder

@@ -65,6 +65,9 @@ public class Product {
     @Builder.Default
     private Integer viewCount = 0;
 
+    @Column(length = 30)
+    private String label;
+
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;

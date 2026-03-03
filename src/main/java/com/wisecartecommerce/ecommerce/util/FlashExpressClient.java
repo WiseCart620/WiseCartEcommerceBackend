@@ -21,7 +21,7 @@ public class FlashExpressClient {
 
     public Map<String, Object> post(String url, Map<String, String> params) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        params.forEach(form::add);
+        params.forEach((k, v) -> form.set(k, v));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);

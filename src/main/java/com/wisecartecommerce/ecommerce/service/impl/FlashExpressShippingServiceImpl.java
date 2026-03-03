@@ -59,7 +59,8 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
             params.put("srcProvinceName", props.getSrcProvinceName());
             params.put("srcCityName", props.getSrcCityName());
-            params.put("srcPostalCode", props.getSrcPostalCode());
+            params.put("srcPostalCode", padPostalCode(props.getSrcPostalCode()));
+            params.put("dstPostalCode", padPostalCode(dstPostalCode));
             params.put("dstProvinceName", dstProvince);
             params.put("dstCityName", dstCity);
             params.put("dstPostalCode", dstPostalCode);
@@ -86,6 +87,9 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             return null;
         }
 
+        // ── COD detection ─────────────────────────────────────────────────────
+        boolean isCod = isCod(order.getPaymentMethod());
+
         Map<String, String> params = new LinkedHashMap<>();
         params.put("mchId", props.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
@@ -111,10 +115,22 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         int[] dims = calculateDimensions(order);
         params.put("weight", String.valueOf(weightGrams));
         params.put("length", String.valueOf(dims[0]));
-        params.put("width",  String.valueOf(dims[1]));
+        params.put("width", String.valueOf(dims[1]));
         params.put("height", String.valueOf(dims[2]));
         params.put("insured", "0");
-        params.put("codEnabled", "0");
+
+        if (isCod && order.getFinalAmount() != null) {
+            long codAmountCents = order.getFinalAmount()
+                    .multiply(CENTS)
+                    .setScale(0, RoundingMode.CEILING)
+                    .longValue();
+            params.put("codEnabled", "1");
+            params.put("codAmount", Long.toString(codAmountCents));
+            log.info("COD enabled for order {}: ₱{} = {} cents",
+                    order.getOrderNumber(), order.getFinalAmount(), codAmountCents);
+        } else {
+            params.put("codEnabled", "0");
+        }
 
         params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
 
@@ -127,7 +143,7 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             if (code == 1) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> data = (Map<String, Object>) response.get("data");
-                log.info("Flash order created successfully: PNO={}", data.get("pno"));
+                log.info("Flash order created successfully: PNO={}, COD={}", data.get("pno"), isCod);
                 return FlashOrderResult.builder()
                         .pno((String) data.get("pno"))
                         .sortCode((String) data.get("sortCode"))
@@ -260,7 +276,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
                 Object stateChangeObj = data.get("stateChangeAt");
                 Long stateChangeAt = stateChangeObj instanceof Number n ? n.longValue() : null;
 
-                // ── FIX: null-safe routes — Flash returns null when no events yet ──
                 Object routesObj = data.get("routes");
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> rawRoutes = (routesObj instanceof List)
@@ -342,6 +357,11 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
     // ─── Private Helpers ──────────────────────────────────────────────────────
 
+    private boolean isCod(String paymentMethod) {
+        return "COD".equalsIgnoreCase(paymentMethod) ||
+                "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
+    }
+
     private int[] calculateDimensions(Order order) {
         int maxLength = 0, maxWidth = 0, totalHeight = 0;
 
@@ -353,29 +373,32 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
             if (variation != null) {
                 l = variation.getLengthCm() != null ? variation.getLengthCm().intValue() : 0;
-                w = variation.getWidthCm()  != null ? variation.getWidthCm().intValue()  : 0;
+                w = variation.getWidthCm() != null ? variation.getWidthCm().intValue() : 0;
                 h = variation.getHeightCm() != null ? variation.getHeightCm().intValue() : 0;
             }
 
-            // fallback to product-level dimensions
-            if (l == 0) l = product.getLengthCm() != null ? product.getLengthCm().intValue() : 20;
-            if (w == 0) w = product.getWidthCm()  != null ? product.getWidthCm().intValue()  : 15;
-            if (h == 0) h = product.getHeightCm() != null ? product.getHeightCm().intValue() : 10;
+            if (l == 0)
+                l = product.getLengthCm() != null ? product.getLengthCm().intValue() : 20;
+            if (w == 0)
+                w = product.getWidthCm() != null ? product.getWidthCm().intValue() : 15;
+            if (h == 0)
+                h = product.getHeightCm() != null ? product.getHeightCm().intValue() : 10;
 
             maxLength = Math.max(maxLength, l);
-            maxWidth  = Math.max(maxWidth, w);
+            maxWidth = Math.max(maxWidth, w);
             totalHeight += h * item.getQuantity();
         }
 
-        return new int[]{
-            Math.max(maxLength, 1),
-            Math.max(maxWidth,  1),
-            Math.max(totalHeight, 1)
+        return new int[] {
+                Math.max(maxLength, 1),
+                Math.max(maxWidth, 1),
+                Math.max(totalHeight, 1)
         };
     }
 
     private FlashShippingRateResponse parseRateResponse(Map<String, Object> body, int expressCategory) {
-        if (body == null) throw new CustomException("Empty response from Flash Express");
+        if (body == null)
+            throw new CustomException("Empty response from Flash Express");
 
         Object codeObj = body.get("code");
         int code = codeObj instanceof Number n ? n.intValue() : 0;
@@ -388,10 +411,11 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) body.get("data");
-        if (data == null) throw new CustomException("No data in Flash Express response");
+        if (data == null)
+            throw new CustomException("No data in Flash Express response");
 
-        BigDecimal shippingFee    = centsToPHP(data.get("estimatePrice"));
-        BigDecimal upCountryFee   = centsToPHP(data.get("upCountryAmount"));
+        BigDecimal shippingFee = centsToPHP(data.get("estimatePrice"));
+        BigDecimal upCountryFee = centsToPHP(data.get("upCountryAmount"));
         BigDecimal codTransferFee = centsToPHP(data.get("codTransferFee"));
         Boolean upCountry = (Boolean) data.get("upCountry");
         Object policyObj = data.get("pricePolicy");
@@ -416,7 +440,8 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     private BigDecimal centsToPHP(Object value) {
-        if (value == null) return BigDecimal.ZERO;
+        if (value == null)
+            return BigDecimal.ZERO;
         try {
             return new BigDecimal(value.toString()).divide(CENTS, 2, RoundingMode.HALF_UP);
         } catch (Exception e) {
@@ -437,12 +462,13 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     private FlashShippingRateResponse createFallbackResponse(int expressCategory, String dstPostalCode) {
         boolean isUpCountry = dstPostalCode != null &&
                 (dstPostalCode.startsWith("4") ||
-                 dstPostalCode.startsWith("5") ||
-                 dstPostalCode.startsWith("9"));
+                        dstPostalCode.startsWith("5") ||
+                        dstPostalCode.startsWith("9"));
 
-        BigDecimal shippingFee  = FALLBACK_SHIPPING_FEE;
+        BigDecimal shippingFee = FALLBACK_SHIPPING_FEE;
         BigDecimal upCountryFee = isUpCountry ? FALLBACK_UPCOUNTRY_FEE : BigDecimal.ZERO;
-        if (isUpCountry) shippingFee = shippingFee.add(upCountryFee);
+        if (isUpCountry)
+            shippingFee = shippingFee.add(upCountryFee);
 
         String expressLabel = switch (expressCategory) {
             case 2 -> "On-Time Delivery (Fallback)";
@@ -460,4 +486,11 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
                 .expressLabel(expressLabel)
                 .build();
     }
+
+    private String padPostalCode(String postalCode) {
+        if (postalCode == null)
+            return postalCode;
+        return postalCode.length() < 5 ? String.format("%05d", Integer.parseInt(postalCode.trim())) : postalCode;
+    }
+    
 }

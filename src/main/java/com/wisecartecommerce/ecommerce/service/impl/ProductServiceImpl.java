@@ -61,6 +61,7 @@ public class ProductServiceImpl implements ProductService {
                 .sku(request.getSku())
                 .upc(request.getUpc())
                 .discount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO)
+                .label(request.getLabel())
                 .active(true)
                 .build();
 
@@ -124,6 +125,7 @@ public class ProductServiceImpl implements ProductService {
         product.setSku(request.getSku());
         product.setUpc(request.getUpc());
         product.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
+        product.setLabel(request.getLabel());
         if (request.getVariations() != null) {
             // Build a map of existing variations by ID and name for image preservation
             Map<Long, String> existingImagesByID = product.getVariations().stream()
@@ -630,6 +632,7 @@ public class ProductServiceImpl implements ProductService {
                 .variations(variationResponses)
                 .active(product.isActive())
                 .featured(product.isFeatured())
+                .label(product.getLabel())
                 .reviewSummary(reviewSummary)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())

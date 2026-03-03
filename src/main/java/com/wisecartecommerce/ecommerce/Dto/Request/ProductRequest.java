@@ -58,4 +58,7 @@ public class ProductRequest {
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
+
+    @Size(max = 30, message = "Label must be 30 characters or less")
+    private String label;
 }

@@ -1,5 +1,9 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
+import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.entity.User;
+import com.wisecartecommerce.ecommerce.mapper.OrderMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,9 +13,6 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
-
-import com.wisecartecommerce.ecommerce.entity.Order;
-import com.wisecartecommerce.ecommerce.entity.User;
 
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
@@ -24,6 +25,7 @@ public class EmailService {
     
     private final JavaMailSender mailSender;
     private final TemplateEngine templateEngine;
+    private final OrderMapper orderMapper;  // Inject the mapper
     
     @Value("${spring.mail.username}")
     private String fromEmail;
@@ -85,25 +87,29 @@ public class EmailService {
                 return;
             }
             
-            User user = order.getUser();
-            if (user == null || user.getEmail() == null) {
-                log.error("Cannot send order confirmation email: user or email is null for order {}", order.getOrderNumber());
+            String recipientEmail = getRecipientEmail(order);
+            if (recipientEmail == null) {
+                log.error("Cannot send order confirmation email: no email found for order {}", order.getOrderNumber());
                 return;
             }
             
+            // Convert Order entity to OrderResponse DTO using the mapper
+            OrderResponse orderResponse = orderMapper.toResponse(order);
+            
             Context context = new Context(Locale.getDefault());
-            context.setVariable("order", order);
-            context.setVariable("user", user);
+            context.setVariable("order", orderResponse);  // Now using the DTO with productImage field
+            context.setVariable("user", order.getUser());
             context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
             
             String content = templateEngine.process("email/order-confirmation", context);
             String subject = "Order Confirmation - #" + order.getOrderNumber();
             
-            sendEmail(user.getEmail(), subject, content);
-            log.info("Order confirmation email sent for order: {}", order.getOrderNumber());
+            sendEmail(recipientEmail, subject, content);
+            log.info("Order confirmation email sent for order: {} to: {}", order.getOrderNumber(), recipientEmail);
             
         } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order: {}", order != null ? order.getOrderNumber() : "unknown", e);
+            log.error("Failed to send order confirmation email for order: {}", 
+                order != null ? order.getOrderNumber() : "unknown", e);
         }
     }
     
@@ -115,25 +121,29 @@ public class EmailService {
                 return;
             }
             
-            User user = order.getUser();
-            if (user == null || user.getEmail() == null) {
-                log.error("Cannot send order status update email: user or email is null for order {}", order.getOrderNumber());
+            String recipientEmail = getRecipientEmail(order);
+            if (recipientEmail == null) {
+                log.error("Cannot send order status update email: no email found for order {}", order.getOrderNumber());
                 return;
             }
             
+            // Convert Order entity to OrderResponse DTO using the mapper
+            OrderResponse orderResponse = orderMapper.toResponse(order);
+            
             Context context = new Context(Locale.getDefault());
-            context.setVariable("order", order);
-            context.setVariable("user", user);
+            context.setVariable("order", orderResponse);  // Now using the DTO
+            context.setVariable("user", order.getUser());
             context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
             
             String content = templateEngine.process("email/order-status-update", context);
             String subject = "Order Status Update - #" + order.getOrderNumber();
             
-            sendEmail(user.getEmail(), subject, content);
-            log.info("Order status update email sent for order: {}", order.getOrderNumber());
+            sendEmail(recipientEmail, subject, content);
+            log.info("Order status update email sent for order: {} to: {}", order.getOrderNumber(), recipientEmail);
             
         } catch (Exception e) {
-            log.error("Failed to send order status update email for order: {}", order != null ? order.getOrderNumber() : "unknown", e);
+            log.error("Failed to send order status update email for order: {}", 
+                order != null ? order.getOrderNumber() : "unknown", e);
         }
     }
     
@@ -158,6 +168,18 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send welcome email to: {}", user != null ? user.getEmail() : "unknown", e);
         }
+    }
+    
+    /**
+     * Helper method to get the recipient email (either registered user or guest)
+     */
+    private String getRecipientEmail(Order order) {
+        if (order.getUser() != null && order.getUser().getEmail() != null) {
+            return order.getUser().getEmail();
+        } else if (order.getGuestEmail() != null) {
+            return order.getGuestEmail();
+        }
+        return null;
     }
     
     private void sendEmail(String to, String subject, String content) throws MessagingException {

@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 
@@ -19,6 +20,8 @@ public interface OrderService {
     OrderResponse getUserOrderById(Long id);
 
     OrderResponse trackOrder(String orderNumber);
+
+    CustomerTrackingResponse getCustomerTracking(String orderNumber);
 
     Page<OrderResponse> getUserOrders(Pageable pageable);
 

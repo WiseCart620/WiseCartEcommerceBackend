@@ -1,6 +1,5 @@
 package com.wisecartecommerce.ecommerce.controller.customer;
 
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -13,7 +12,12 @@ import org.springframework.web.bind.annotation.*;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
+import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,6 +36,8 @@ import java.util.List;
 public class OrderController {
 
     private final OrderService orderService;
+    private final FlashExpressShippingService shippingService;
+    private final OrderRepository orderRepository;
 
     @PostMapping
     @Operation(summary = "Create a new order")
@@ -49,14 +55,14 @@ public class OrderController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "createdAt") String sortBy,
             @RequestParam(defaultValue = "desc") String sortDir) {
-        
-        Sort sort = sortDir.equalsIgnoreCase("asc") 
-            ? Sort.by(sortBy).ascending() 
-            : Sort.by(sortBy).descending();
-        
+
+        Sort sort = sortDir.equalsIgnoreCase("asc")
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
         Pageable pageable = PageRequest.of(page, size, sort);
         Page<OrderResponse> orders = orderService.getUserOrders(pageable);
-        
+
         return ResponseEntity.ok(ApiResponse.success("Orders retrieved", orders));
     }
 
@@ -67,6 +73,31 @@ public class OrderController {
         return ResponseEntity.ok(ApiResponse.success("Order retrieved", response));
     }
 
+    /**
+     * Live tracking endpoint via Flash Express.
+     * Uses the Flash PNO (e.g. PTHXXXXXXXX) as the tracking number.
+     * Falls back gracefully if tracking number is not yet assigned.
+     */
+    @GetMapping("/{orderNumber}/track")
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN')") 
+    @Operation(summary = "Track order via Flash Express")
+    public ResponseEntity<ApiResponse<FlashTrackingResponse>> trackOrder(
+            @PathVariable String orderNumber) {
+
+        Order order = orderRepository.findByOrderNumber(orderNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Order not found: " + orderNumber));
+
+        String trackingNumber = order.getTrackingNumber();
+
+        if (trackingNumber == null || !trackingNumber.startsWith("P")) {
+            return ResponseEntity.ok(ApiResponse.success(
+                    "Order is being processed, tracking not yet available", null));
+        }
+
+        FlashTrackingResponse tracking = shippingService.trackOrder(trackingNumber);
+        return ResponseEntity.ok(ApiResponse.success("Tracking info retrieved", tracking));
+    }
 
     @PostMapping("/{id}/cancel")
     @Operation(summary = "Cancel order")
@@ -88,7 +119,6 @@ public class OrderController {
     @Operation(summary = "Get recent orders")
     public ResponseEntity<ApiResponse<List<OrderResponse>>> getRecentOrders(
             @RequestParam(defaultValue = "5") int limit) {
-        
         List<OrderResponse> orders = orderService.getUserRecentOrders(limit);
         return ResponseEntity.ok(ApiResponse.success("Recent orders retrieved", orders));
     }
