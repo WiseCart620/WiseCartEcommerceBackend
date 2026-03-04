@@ -27,10 +27,10 @@ public class FlashWebhookController {
     public ResponseEntity<Map<String, String>> handleStatusWebhook(
             @RequestParam Map<String, String> params) {
         try {
-            String pno        = params.get("data[pno]");
+            String pno = params.get("data[pno]");
             String outTradeNo = params.get("data[outTradeNo]");
-            String stateStr   = params.get("data[state]");
-            String stateText  = params.get("data[stateText]");
+            String stateStr = params.get("data[state]");
+            String stateText = params.get("data[stateText]");
 
             log.info("Flash status webhook: PNO={}, outTradeNo={}, state={} ({})",
                     pno, outTradeNo, stateStr, stateText);
@@ -48,12 +48,12 @@ public class FlashWebhookController {
     public ResponseEntity<Map<String, String>> handleRoutesWebhook(
             @RequestParam Map<String, String> params) {
         try {
-            String pno         = params.get("data[pno]");
-            String outTradeNo  = params.get("data[outTradeNo]");
-            String stateStr    = params.get("data[state]");
-            String stateText   = params.get("data[stateText]");
+            String pno = params.get("data[pno]");
+            String outTradeNo = params.get("data[outTradeNo]");
+            String stateStr = params.get("data[state]");
+            String stateText = params.get("data[stateText]");
             String routeAction = params.get("data[routedAction]");
-            String message     = params.get("data[message]");
+            String message = params.get("data[message]");
 
             log.info("Flash routes webhook: PNO={}, state={} ({}), action={}, msg={}",
                     pno, stateStr, stateText, routeAction, message);
@@ -70,9 +70,16 @@ public class FlashWebhookController {
     // ─── Core update logic ────────────────────────────────────────────────────
 
     private void updateOrderFromWebhook(String pno, String outTradeNo,
-                                        String stateStr, String stateText) {
+            String stateStr, String stateText) {
         Order order = resolveOrder(pno, outTradeNo);
-        if (order == null) return;
+        if (order == null)
+            return;
+
+        // ── NEW: skip all updates for orders already cancelled locally ──────────
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            log.debug("Flash webhook: skipping update for locally-cancelled order PNO={}", pno);
+            return;
+        }
 
         int flashState;
         try {
@@ -83,15 +90,15 @@ public class FlashWebhookController {
         }
 
         OrderStatus newStatus = switch (flashState) {
-            case 1  -> OrderStatus.PROCESSING;
-            case 2  -> OrderStatus.SHIPPED;
-            case 3  -> OrderStatus.OUT_FOR_DELIVERY;
-            case 4  -> OrderStatus.SHIPPED;
-            case 5  -> OrderStatus.DELIVERED;
-            case 6  -> OrderStatus.SHIPPED;
-            case 7  -> OrderStatus.RETURNED;
-            case 8  -> OrderStatus.CANCELLED;
-            case 9  -> OrderStatus.CANCELLED;
+            case 1 -> OrderStatus.PROCESSING;
+            case 2 -> OrderStatus.SHIPPED;
+            case 3 -> OrderStatus.OUT_FOR_DELIVERY;
+            case 4 -> OrderStatus.SHIPPED;
+            case 5 -> OrderStatus.DELIVERED;
+            case 6 -> OrderStatus.SHIPPED;
+            case 7 -> OrderStatus.RETURNED;
+            case 8 -> OrderStatus.CANCELLED;
+            case 9 -> OrderStatus.CANCELLED;
             case 98 -> OrderStatus.CANCELLED;
             case 99 -> OrderStatus.PROCESSING;
             default -> null;
@@ -140,7 +147,7 @@ public class FlashWebhookController {
 
     private boolean isCod(String paymentMethod) {
         return "COD".equalsIgnoreCase(paymentMethod) ||
-               "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
+                "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
     }
 
     private Order resolveOrder(String pno, String outTradeNo) {
@@ -150,7 +157,8 @@ public class FlashWebhookController {
             try {
                 Long orderId = Long.parseLong(outTradeNo);
                 orderOpt = orderRepository.findById(orderId);
-            } catch (NumberFormatException ignored) {}
+            } catch (NumberFormatException ignored) {
+            }
         }
 
         if (orderOpt.isEmpty()) {
@@ -166,17 +174,18 @@ public class FlashWebhookController {
     }
 
     private int statusRank(OrderStatus status) {
-        if (status == null) return 0;
+        if (status == null)
+            return 0;
         return switch (status) {
-            case PENDING          -> 1;
-            case PROCESSING       -> 2;
-            case SHIPPED          -> 3;
+            case PENDING -> 1;
+            case PROCESSING -> 2;
+            case SHIPPED -> 3;
             case OUT_FOR_DELIVERY -> 4;
-            case DELIVERED        -> 5;
-            case RETURNED         -> 5;
-            case CANCELLED        -> 5;
-            case REFUNDED         -> 5;
-            case FAILED           -> 5;
+            case DELIVERED -> 5;
+            case RETURNED -> 5;
+            case CANCELLED -> 5;
+            case REFUNDED -> 5;
+            case FAILED -> 5;
         };
     }
 

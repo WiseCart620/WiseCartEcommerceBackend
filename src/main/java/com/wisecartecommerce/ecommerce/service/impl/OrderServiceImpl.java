@@ -603,10 +603,43 @@ public class OrderServiceImpl implements OrderService {
         User user = getCurrentUser();
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
         if (!order.getUser().getId().equals(user.getId()))
             throw new CustomException("You can only cancel your own orders");
+
         if (order.getStatus() != OrderStatus.PENDING)
             throw new CustomException("Order cannot be cancelled after processing has started");
+
+        String pno = order.getTrackingNumber();
+
+        // ── Check Flash state first ────────────────────────────────────────────
+        if (pno != null && !pno.isBlank()) {
+            try {
+                FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
+                if (flashData != null && flashData.getState() != null && flashData.getState() >= 50) {
+                    throw new CustomException(
+                            "Your order has already been picked up by the courier and cannot be cancelled.");
+                }
+            } catch (CustomException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Could not verify Flash state for PNO={}: {}", pno, e.getMessage());
+            }
+        }
+
+        // ── Cancel on Flash Express ────────────────────────────────────────────
+        if (pno != null && !pno.isBlank()) {
+            try {
+                flashShippingService.cancelOrder(pno);
+                log.info("Flash Express order cancelled for PNO={}, order={}", pno, order.getOrderNumber());
+            } catch (CustomException e) {
+                log.warn("Flash Express cancel failed for PNO={}: {}", pno, e.getMessage());
+                // Don't block local cancellation if Flash cancel fails
+            } catch (Exception e) {
+                log.warn("Flash Express cancel exception for PNO={}: {}", pno, e.getMessage());
+            }
+        }
+
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledAt(LocalDateTime.now());
         restoreStock(order);
@@ -856,7 +889,6 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-
     @Override
     @Transactional(readOnly = true)
     public CustomerTrackingResponse getCustomerTracking(String orderNumber) {
@@ -877,7 +909,6 @@ public class OrderServiceImpl implements OrderService {
                 .trackingNumber(pno)
                 .shippingCarrier(order.getShippingCarrier())
                 .orderStatus(order.getStatus());
-
 
         // 3. If no PNO yet (order still being packed), return without Flash data
         if (pno == null || pno.isBlank()) {

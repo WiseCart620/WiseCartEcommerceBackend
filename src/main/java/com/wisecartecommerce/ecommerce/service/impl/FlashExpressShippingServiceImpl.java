@@ -3,15 +3,19 @@ package com.wisecartecommerce.ecommerce.service.impl;
 import com.wisecartecommerce.ecommerce.Dto.Response.*;
 import com.wisecartecommerce.ecommerce.config.FlashExpressProperties;
 import com.wisecartecommerce.ecommerce.entity.Address;
+import com.wisecartecommerce.ecommerce.entity.FlashExpressSettings;
 import com.wisecartecommerce.ecommerce.entity.Order;
 import com.wisecartecommerce.ecommerce.entity.Product;
 import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
+import com.wisecartecommerce.ecommerce.service.FlashExpressSettingsService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.util.FlashExpressClient;
 import com.wisecartecommerce.ecommerce.util.FlashExpressSignatureUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -26,10 +30,19 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
     private final FlashExpressProperties props;
     private final FlashExpressClient client;
+    private final FlashExpressSettingsService settingsService;
 
     private static final BigDecimal CENTS = BigDecimal.valueOf(100);
     private static final BigDecimal FALLBACK_SHIPPING_FEE = new BigDecimal("150.00");
     private static final BigDecimal FALLBACK_UPCOUNTRY_FEE = new BigDecimal("50.00");
+
+    /**
+     * Always returns live settings from DB.
+     * Falls back to yaml props if DB has no row yet.
+     */
+    private FlashExpressSettings s() {
+        return settingsService.getSettings();
+    }
 
     // ─── Rate Estimation ─────────────────────────────────────────────────────
 
@@ -54,21 +67,21 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
 
         try {
+            FlashExpressSettings s = s();
             Map<String, String> params = new HashMap<>();
-            params.put("mchId", props.getMchId());
+            params.put("mchId", s.getMchId());
             params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
-            params.put("srcProvinceName", props.getSrcProvinceName());
-            params.put("srcCityName", props.getSrcCityName());
-            params.put("srcPostalCode", padPostalCode(props.getSrcPostalCode()));
-            params.put("dstPostalCode", padPostalCode(dstPostalCode));
+            params.put("srcProvinceName", s.getSrcProvinceName());
+            params.put("srcCityName", s.getSrcCityName());
+            params.put("srcPostalCode", padPostalCode(s.getSrcPostalCode()));
             params.put("dstProvinceName", dstProvince);
             params.put("dstCityName", dstCity);
-            params.put("dstPostalCode", dstPostalCode);
+            params.put("dstPostalCode", padPostalCode(dstPostalCode));
             params.put("weight", String.valueOf(weightGrams));
             params.put("expressCategory", String.valueOf(expressCategory));
-            params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
+            params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
-            Map<String, Object> response = client.post(props.estimateRateUrl(), params);
+            Map<String, Object> response = client.post(s.getBaseUrl() + "/open/v1/orders/estimate_rate", params);
             return parseRateResponse(response, expressCategory);
 
         } catch (Exception e) {
@@ -87,20 +100,20 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             return null;
         }
 
-        // ── COD detection ─────────────────────────────────────────────────────
+        FlashExpressSettings s = s();
         boolean isCod = isCod(order.getPaymentMethod());
 
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mchId", props.getMchId());
+        params.put("mchId", s.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
         params.put("outTradeNo", order.getId().toString());
 
-        params.put("srcName", props.getSrcName());
-        params.put("srcPhone", props.getSrcPhone());
-        params.put("srcDetailAddress", props.getSrcDetailAddress());
-        params.put("srcProvinceName", props.getSrcProvinceName());
-        params.put("srcCityName", props.getSrcCityName());
-        params.put("srcPostalCode", props.getSrcPostalCode());
+        params.put("srcName", s.getSrcName());
+        params.put("srcPhone", s.getSrcPhone());
+        params.put("srcDetailAddress", s.getSrcDetailAddress());
+        params.put("srcProvinceName", s.getSrcProvinceName());
+        params.put("srcCityName", s.getSrcCityName());
+        params.put("srcPostalCode", s.getSrcPostalCode());
 
         params.put("dstName", shippingAddress.getFirstName() + " " + shippingAddress.getLastName());
         params.put("dstPhone", shippingAddress.getPhone());
@@ -132,10 +145,10 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             params.put("codEnabled", "0");
         }
 
-        params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
+        params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
         try {
-            Map<String, Object> response = client.post(props.getBaseUrl() + "/open/v3/orders", params);
+            Map<String, Object> response = client.post(s.getBaseUrl() + "/open/v3/orders", params);
 
             Object codeObj = response.get("code");
             int code = codeObj instanceof Number n ? n.intValue() : 0;
@@ -169,12 +182,13 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             throw new CustomException("Flash Express is not configured");
         }
 
+        FlashExpressSettings s = s();
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mchId", props.getMchId());
+        params.put("mchId", s.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
-        params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
+        params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
-        String url = props.getBaseUrl() + "/open/v1/orders/" + pno + "/pre_print";
+        String url = s.getBaseUrl() + "/open/v1/orders/" + pno + "/pre_print";
         log.info("Downloading Flash Express label for PNO={}", pno);
 
         byte[] pdfBytes = client.postForBytes(url, params);
@@ -194,23 +208,24 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             throw new CustomException("Flash Express is not configured");
         }
 
+        FlashExpressSettings s = s();
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mchId", props.getMchId());
+        params.put("mchId", s.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
-        params.put("srcName", props.getSrcName());
-        params.put("srcPhone", props.getSrcPhone());
-        params.put("srcProvinceName", props.getSrcProvinceName());
-        params.put("srcCityName", props.getSrcCityName());
-        params.put("srcPostalCode", props.getSrcPostalCode());
-        params.put("srcDetailAddress", props.getSrcDetailAddress());
+        params.put("srcName", s.getSrcName());
+        params.put("srcPhone", s.getSrcPhone());
+        params.put("srcProvinceName", s.getSrcProvinceName());
+        params.put("srcCityName", s.getSrcCityName());
+        params.put("srcPostalCode", s.getSrcPostalCode());
+        params.put("srcDetailAddress", s.getSrcDetailAddress());
         params.put("estimateParcelNumber", String.valueOf(estimateParcelNumber));
         if (remark != null && !remark.isBlank()) {
             params.put("remark", remark);
         }
-        params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
+        params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
         try {
-            Map<String, Object> response = client.post(props.getBaseUrl() + "/open/v1/notify", params);
+            Map<String, Object> response = client.post(s.getBaseUrl() + "/open/v1/notify", params);
 
             Object codeObj = response.get("code");
             int code = codeObj instanceof Number n ? n.intValue() : 0;
@@ -218,12 +233,9 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             if (code == 1) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> data = (Map<String, Object>) response.get("data");
-
                 Object ticketId = data.get("ticketPickupId");
                 Long ticketPickupId = ticketId instanceof Number n ? n.longValue() : null;
-
                 log.info("Flash courier notified. TicketPickupId={}", ticketPickupId);
-
                 return FlashNotifyResponse.builder()
                         .ticketPickupId(ticketPickupId)
                         .staffInfoName((String) data.get("staffInfoName"))
@@ -232,11 +244,20 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
                         .ticketMessage((String) data.get("ticketMessage"))
                         .upCountryNote((String) data.get("upCountryNote"))
                         .build();
+
+            } else if (code == 1010) {
+                log.info(
+                        "Flash notify: active pickup ticket already exists (code 1010) — returning existing ticket indicator");
+                return FlashNotifyResponse.builder()
+                        .ticketMessage("A pickup has already been scheduled. The courier is on the way.")
+                        .build();
+
             } else {
                 String message = (String) response.get("message");
-                log.error("Flash notify courier failed: code={}, message={}", response.get("code"), message);
+                log.error("Flash notify courier failed: code={}, message={}", code, message);
                 throw new CustomException("Flash Express notify failed: " + message);
             }
+
         } catch (CustomException e) {
             throw e;
         } catch (Exception e) {
@@ -253,12 +274,13 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             throw new CustomException("Flash Express is not configured");
         }
 
+        FlashExpressSettings s = s();
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mchId", props.getMchId());
+        params.put("mchId", s.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
-        params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
+        params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
-        String url = props.getBaseUrl() + "/open/v1/orders/" + pno + "/routes";
+        String url = s.getBaseUrl() + "/open/v1/orders/" + pno + "/routes";
 
         try {
             Map<String, Object> response = client.post(url, params);
@@ -321,37 +343,39 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
     // ─── Cancel Order ─────────────────────────────────────────────────────────
 
+    // ─── Cancel Order ─────────────────────────────────────────────────────────
+
     @Override
     public void cancelOrder(String pno) {
         if (!isFlashExpressConfigured()) {
             throw new CustomException("Flash Express is not configured");
         }
 
+        FlashExpressSettings s = s();
         Map<String, String> params = new LinkedHashMap<>();
-        params.put("mchId", props.getMchId());
+        params.put("mchId", s.getMchId());
         params.put("nonceStr", FlashExpressSignatureUtil.generateNonce());
-        params.put("sign", FlashExpressSignatureUtil.generateSign(params, props.getSecretKey()));
-
-        String url = props.getBaseUrl() + "/open/v1/orders/" + pno + "/cancel";
+        params.put("sign", FlashExpressSignatureUtil.generateSign(params, s.getSecretKey()));
 
         try {
-            Map<String, Object> response = client.post(url, params);
+            Map<String, Object> response = client.post(
+                    s.getBaseUrl() + "/open/v1/orders/" + pno + "/cancel", params);
 
             Object codeObj = response.get("code");
             int code = codeObj instanceof Number n ? n.intValue() : 0;
 
             if (code == 1) {
-                log.info("Flash Express order cancelled: PNO={}", pno);
+                log.info("Flash Express order PNO={} cancelled successfully", pno);
             } else {
                 String message = (String) response.get("message");
-                log.error("Flash cancel failed: code={}, message={}", response.get("code"), message);
-                throw new CustomException("Flash cancel failed: " + message);
+                log.warn("Flash Express cancel non-success PNO={}: code={}, message={}", pno, code, message);
+                throw new CustomException("Flash Express cancellation failed: " + message);
             }
         } catch (CustomException e) {
             throw e;
         } catch (Exception e) {
-            log.error("Flash cancel exception for PNO={}: {}", pno, e.getMessage());
-            throw new CustomException("Flash cancel failed: " + e.getMessage());
+            log.error("Flash Express cancel exception for PNO={}: {}", pno, e.getMessage());
+            throw new CustomException("Failed to cancel Flash Express order: " + e.getMessage());
         }
     }
 
@@ -450,13 +474,14 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     private boolean isFlashExpressConfigured() {
-        return props.getMchId() != null &&
-                !props.getMchId().isEmpty() &&
-                !props.getMchId().contains("YOUR_") &&
-                !props.getMchId().contains("AAXXXX") &&
-                props.getSecretKey() != null &&
-                !props.getSecretKey().isEmpty() &&
-                props.getBaseUrl() != null;
+        FlashExpressSettings s = s();
+        return s.getMchId() != null &&
+                !s.getMchId().isEmpty() &&
+                !s.getMchId().contains("YOUR_") &&
+                !s.getMchId().contains("AAXXXX") &&
+                s.getSecretKey() != null &&
+                !s.getSecretKey().isEmpty() &&
+                s.getBaseUrl() != null;
     }
 
     private FlashShippingRateResponse createFallbackResponse(int expressCategory, String dstPostalCode) {
@@ -490,7 +515,8 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     private String padPostalCode(String postalCode) {
         if (postalCode == null)
             return postalCode;
-        return postalCode.length() < 5 ? String.format("%05d", Integer.parseInt(postalCode.trim())) : postalCode;
+        return postalCode.length() < 5
+                ? String.format("%05d", Integer.parseInt(postalCode.trim()))
+                : postalCode;
     }
-    
 }
