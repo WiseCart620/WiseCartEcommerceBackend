@@ -607,13 +607,24 @@ public class OrderServiceImpl implements OrderService {
         if (!order.getUser().getId().equals(user.getId()))
             throw new CustomException("You can only cancel your own orders");
 
-        if (order.getStatus() != OrderStatus.PENDING)
-            throw new CustomException("Order cannot be cancelled after processing has started");
+        // Allow cancellation while PENDING or PROCESSING (before pickup)
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING)
+            throw new CustomException("Order cannot be cancelled once it has been shipped");
 
         String pno = order.getTrackingNumber();
 
-        // ── Check Flash state first ────────────────────────────────────────────
-        if (pno != null && !pno.isBlank()) {
+        // Fallback: old orders may have null trackingNumber but PNO stored in
+        // orderNumber
+        if ((pno == null || pno.isBlank() || !pno.startsWith("P"))
+                && order.getOrderNumber() != null
+                && order.getOrderNumber().startsWith("P")) {
+            pno = order.getOrderNumber();
+            log.warn("trackingNumber null for order id={}, falling back to orderNumber as PNO={}",
+                    order.getId(), pno);
+        }
+
+        // ── 1. Check Flash state to block if already picked up ───────────────────
+        if (pno != null && pno.startsWith("P")) {
             try {
                 FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
                 if (flashData != null && flashData.getState() != null && flashData.getState() >= 50) {
@@ -621,29 +632,42 @@ public class OrderServiceImpl implements OrderService {
                             "Your order has already been picked up by the courier and cannot be cancelled.");
                 }
             } catch (CustomException e) {
-                throw e;
+                throw e; // rethrow pickup-blocking errors
             } catch (Exception e) {
-                log.warn("Could not verify Flash state for PNO={}: {}", pno, e.getMessage());
+                // Flash tracking unavailable — proceed cautiously but log it
+                log.warn("Could not verify Flash state for PNO={}, proceeding with cancellation: {}", pno,
+                        e.getMessage());
             }
         }
 
-        // ── Cancel on Flash Express ────────────────────────────────────────────
-        if (pno != null && !pno.isBlank()) {
+        // ── 2. Cancel on Flash Express first ─────────────────────────────────────
+        if (pno != null && pno.startsWith("P")) {
             try {
                 flashShippingService.cancelOrder(pno);
                 log.info("Flash Express order cancelled for PNO={}, order={}", pno, order.getOrderNumber());
             } catch (CustomException e) {
-                log.warn("Flash Express cancel failed for PNO={}: {}", pno, e.getMessage());
-                // Don't block local cancellation if Flash cancel fails
+                // Flash returned a business error (e.g. already picked up on their end)
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                if (msg.contains("1015") || msg.toLowerCase().contains("picked up")) {
+                    throw new CustomException(
+                            "Your order has already been picked up by the courier and cannot be cancelled.");
+                }
+                // Other Flash errors — log but don't block local cancellation
+                log.warn("Flash Express cancel returned error for PNO={}: {}", pno, msg);
             } catch (Exception e) {
                 log.warn("Flash Express cancel exception for PNO={}: {}", pno, e.getMessage());
+                // Don't block local cancellation if Flash is temporarily unavailable
             }
         }
 
+        // ── 3. Cancel locally ────────────────────────────────────────────────────
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledAt(LocalDateTime.now());
         restoreStock(order);
-        return mapToOrderResponse(orderRepository.save(order));
+
+        Order saved = orderRepository.save(order);
+        log.info("Order {} cancelled by customer {}", order.getOrderNumber(), user.getEmail());
+        return mapToOrderResponse(saved);
     }
 
     @Override
