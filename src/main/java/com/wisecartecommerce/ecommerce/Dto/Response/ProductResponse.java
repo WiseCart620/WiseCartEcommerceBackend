@@ -52,6 +52,12 @@ public class ProductResponse {
     private BigDecimal widthCm;
     private BigDecimal heightCm;
     private String label;
+    private String lazadaUrl;
+    private String shopeeUrl;
+    private List<ProductAddOnResponse> addOns;
+    private List<ProductSummaryResponse> recommendedProducts;
+    private Long recommendationCategoryId;
+    private String recommendationCategoryName;
 
     @Data
     @Builder
@@ -62,5 +68,39 @@ public class ProductResponse {
         private String imageUrl;
         private boolean isPrimary;
         private Integer displayOrder;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ProductAddOnResponse {
+        private Long id;
+        private Long addOnProductId;
+        private String addOnProductName;
+        private String addOnProductImage;
+        private BigDecimal originalPrice;
+        private BigDecimal specialPrice;
+        private BigDecimal effectivePrice;
+        private Integer discountPercent;
+        private boolean inStock;
+        private Integer displayOrder;
+        private boolean hasVariations;
+        private List<ProductVariationResponse> variations;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class ProductSummaryResponse {
+        private Long id;
+        private String name;
+        private String imageUrl;
+        private BigDecimal price;
+        private BigDecimal discountedPrice;
+        private boolean inStock;
+        private BigDecimal rating;
+        private String label;
     }
 }

@@ -119,6 +119,11 @@ public class OrderServiceImpl implements OrderService {
                     .quantity(cartItem.getQuantity())
                     .price(cartItem.getPrice())
                     .subtotal(cartItem.getSubtotal())
+                    .isAddon(cartItem.isAddon())
+                    .addonProduct(cartItem.getAddonProduct())
+                    .addonProductAddOn(cartItem.getAddonProductAddOn())
+                    .addonVariation(cartItem.getAddonVariation())
+                    .addonPrice(cartItem.getAddonPrice())
                     .build();
 
             orderItems.add(orderItem);

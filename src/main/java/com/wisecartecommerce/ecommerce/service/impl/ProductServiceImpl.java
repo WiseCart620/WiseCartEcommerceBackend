@@ -3,6 +3,7 @@ package com.wisecartecommerce.ecommerce.service.impl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductVariationRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse.ProductAddOnResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductVariationResponse;
 import com.wisecartecommerce.ecommerce.entity.Category;
 import com.wisecartecommerce.ecommerce.entity.Product;
@@ -24,6 +26,7 @@ import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.repository.ReviewRepository;
 import com.wisecartecommerce.ecommerce.service.FileStorageService;
 import com.wisecartecommerce.ecommerce.service.ProductService;
+import com.wisecartecommerce.ecommerce.entity.ProductAddOn;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -63,6 +66,14 @@ public class ProductServiceImpl implements ProductService {
                 .discount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO)
                 .label(request.getLabel())
                 .active(true)
+                .lazadaUrl(request.getLazadaUrl())
+                .shopeeUrl(request.getShopeeUrl())
+                .recommendationCategory(request.getRecommendationCategoryId() != null
+                        ? categoryRepository.findById(request.getRecommendationCategoryId()).orElse(null)
+                        : null)
+                .recommendedProducts(request.getRecommendedProductIds() != null
+                        ? productRepository.findAllById(request.getRecommendedProductIds())
+                        : new ArrayList<>())
                 .build();
 
         Product savedProduct = productRepository.save(product);
@@ -105,7 +116,6 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
-        // Check if SKU is being changed and already exists
         if (request.getSku() != null && !request.getSku().equals(product.getSku())) {
             productRepository.findBySku(request.getSku())
                     .ifPresent(p -> {
@@ -126,24 +136,35 @@ public class ProductServiceImpl implements ProductService {
         product.setUpc(request.getUpc());
         product.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
         product.setLabel(request.getLabel());
+        if (request.getLazadaUrl() != null)
+            product.setLazadaUrl(request.getLazadaUrl());
+        if (request.getShopeeUrl() != null)
+            product.setShopeeUrl(request.getShopeeUrl());
+        if (request.getRecommendationCategoryId() != null) {
+            product.setRecommendationCategory(
+                    categoryRepository.findById(request.getRecommendationCategoryId()).orElse(null));
+        } else {
+            product.setRecommendationCategory(null);
+        }
+        if (request.getRecommendedProductIds() != null) {
+            product.setRecommendedProducts(
+                    productRepository.findAllById(request.getRecommendedProductIds()));
+        }
         if (request.getVariations() != null) {
-            // Build a map of existing variations by ID and name for image preservation
             Map<Long, String> existingImagesByID = product.getVariations().stream()
                     .filter(v -> v.getId() != null && v.getImageUrl() != null)
                     .collect(Collectors.toMap(ProductVariation::getId, ProductVariation::getImageUrl));
             Map<String, String> existingImagesByName = product.getVariations().stream()
                     .filter(v -> v.getImageUrl() != null)
                     .collect(Collectors.toMap(ProductVariation::getName, ProductVariation::getImageUrl,
-                            (a, b) -> a)); // keep first if duplicate names
+                            (a, b) -> a));
 
             product.getVariations().clear();
 
             for (ProductVariationRequest varReq : request.getVariations()) {
-                // Skip uniqueness check for variations that already belong to this product
                 validateVariationUniquenessForUpdate(varReq.getSku(), varReq.getUpc(), product.getId());
                 ProductVariation variation = mapToVariationEntity(varReq, product);
 
-                // Restore image URL: prefer match by existing ID, then by name
                 if (varReq.getId() != null && existingImagesByID.containsKey(varReq.getId())) {
                     variation.setImageUrl(existingImagesByID.get(varReq.getId()));
                 } else if (existingImagesByName.containsKey(varReq.getName())) {
@@ -165,7 +186,6 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
-        // Delete product images from storage
         product.getImages().forEach(image -> {
             try {
                 fileStorageService.deleteFile(image.getImageUrl());
@@ -184,7 +204,6 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
-        // Increment view count
         product.setViewCount(product.getViewCount() + 1);
         productRepository.save(product);
 
@@ -311,20 +330,17 @@ public class ProductServiceImpl implements ProductService {
                     .displayOrder(displayOrder)
                     .build();
 
-            // If this is primary, unset other primary images
             if (isPrimary) {
                 product.getImages().forEach(img -> img.setPrimary(false));
             }
 
             product.addImage(productImage);
 
-            // If this is the first image, set it as primary and main image
             if (product.getImages().size() == 1) {
                 productImage.setPrimary(true);
                 product.setImageUrl(imageUrl);
             }
 
-            // If this is primary, update main image URL
             if (isPrimary) {
                 product.setImageUrl(imageUrl);
             }
@@ -351,7 +367,6 @@ public class ProductServiceImpl implements ProductService {
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Product image not found"));
 
-        // Delete file from storage
         try {
             fileStorageService.deleteFile(imageToDelete.getImageUrl());
         } catch (Exception e) {
@@ -360,7 +375,6 @@ public class ProductServiceImpl implements ProductService {
 
         product.getImages().remove(imageToDelete);
 
-        // If we deleted the primary image, set a new primary
         if (imageToDelete.isPrimary() && !product.getImages().isEmpty()) {
             product.getImages().get(0).setPrimary(true);
             product.setImageUrl(product.getImages().get(0).getImageUrl());
@@ -476,7 +490,7 @@ public class ProductServiceImpl implements ProductService {
         Map<String, Object> config = new HashMap<>();
         config.put("currency", "USD");
         config.put("currencySymbol", "$");
-        config.put("taxRate", 0.08); // 8%
+        config.put("taxRate", 0.08);
         config.put("shippingCost", 5.99);
         config.put("freeShippingThreshold", 50.00);
         config.put("returnPeriodDays", 30);
@@ -498,7 +512,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public Page<ProductResponse> getProductsByCategory(Long categoryId, Pageable pageable) {
-        Page<Product> products = productRepository.findByCategoryIdAndActiveTrue(categoryId, pageable); // ✅ Fixed
+        Page<Product> products = productRepository.findByCategoryIdAndActiveTrue(categoryId, pageable);
         return products.map(this::mapToResponse);
     }
 
@@ -517,12 +531,7 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.toList());
     }
 
-    // ─── REPLACE the existing mapToResponse method in ProductServiceImpl.java
-    // ───────
-    // This method now aggregates price and stock from variations when they exist.
-
     private ProductResponse mapToResponse(Product product) {
-        // Build image list
         ProductResponse.ProductImageResponse[] primaryImage = { null };
         List<ProductResponse.ProductImageResponse> images = product.getImages().stream()
                 .map(img -> {
@@ -538,14 +547,12 @@ public class ProductServiceImpl implements ProductService {
                 })
                 .collect(Collectors.toList());
 
-        // Map variations
         List<ProductVariationResponse> variationResponses = product.getVariations().stream()
                 .map(this::mapToVariationResponse)
                 .collect(Collectors.toList());
 
         boolean hasVariations = !variationResponses.isEmpty();
 
-        // ── Variation-aware price & stock ─────────────────────────────────────────
         BigDecimal displayPrice;
         BigDecimal displayDiscountedPrice;
         Integer displayStock;
@@ -555,7 +562,6 @@ public class ProductServiceImpl implements ProductService {
         BigDecimal minDiscountedPrice = null;
 
         if (hasVariations) {
-            // Min / max raw price across variations
             minPrice = variationResponses.stream()
                     .map(ProductVariationResponse::getPrice)
                     .filter(Objects::nonNull)
@@ -568,25 +574,21 @@ public class ProductServiceImpl implements ProductService {
                     .max(Comparator.naturalOrder())
                     .orElse(product.getPrice());
 
-            // Min discounted price (best deal shown to customer)
             minDiscountedPrice = variationResponses.stream()
                     .map(ProductVariationResponse::getDiscountedPrice)
                     .filter(Objects::nonNull)
                     .min(Comparator.naturalOrder())
                     .orElse(minPrice);
 
-            // Display price = cheapest variation; discounted = cheapest discounted
             displayPrice = minPrice;
             displayDiscountedPrice = minDiscountedPrice;
 
-            // Total stock = sum of all variation stocks
             displayStock = variationResponses.stream()
                     .map(ProductVariationResponse::getStockQuantity)
                     .filter(Objects::nonNull)
                     .mapToInt(Integer::intValue)
                     .sum();
 
-            // In stock if at least one variation has stock > 0
             displayInStock = variationResponses.stream()
                     .anyMatch(ProductVariationResponse::isInStock);
         } else {
@@ -596,34 +598,27 @@ public class ProductServiceImpl implements ProductService {
             displayInStock = product.isInStock();
         }
 
-        // Review summary
         Object reviewSummary = reviewRepository.getProductReviewSummary(product.getId());
 
         return ProductResponse.builder()
                 .id(product.getId())
                 .name(product.getName())
                 .description(product.getDescription())
-                // Prices
                 .price(displayPrice)
                 .discountedPrice(displayDiscountedPrice)
                 .hasVariations(hasVariations)
                 .minPrice(minPrice)
                 .maxPrice(maxPrice)
                 .minDiscountedPrice(minDiscountedPrice)
-                // Stock
                 .stockQuantity(displayStock)
                 .inStock(displayInStock)
-                // Category
                 .categoryId(product.getCategory() != null ? product.getCategory().getId() : null)
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
-                // Identity
                 .sku(product.getSku())
                 .upc(product.getUpc())
-                // Images
                 .imageUrl(product.getImageUrl())
                 .images(images)
                 .primaryImage(primaryImage[0])
-                // Metadata
                 .discount(product.getDiscount())
                 .rating(product.getRating())
                 .reviewCount(product.getReviewCount())
@@ -636,6 +631,88 @@ public class ProductServiceImpl implements ProductService {
                 .reviewSummary(reviewSummary)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
+                .lazadaUrl(product.getLazadaUrl())
+                .shopeeUrl(product.getShopeeUrl())
+                .addOns(product.getAddOns().stream().map(a -> {
+                    Product ap = a.getAddOnProduct();
+                    List<ProductVariation> activeVars = ap.getVariations().stream()
+                            .filter(ProductVariation::isActive)
+                            .collect(Collectors.toList());
+                    boolean hasVars = !activeVars.isEmpty();
+
+                    // For variation-based products, derive price/image from cheapest in-stock
+                    // variation
+                    BigDecimal orig;
+                    String displayImage;
+                    if (hasVars) {
+                        ProductVariation cheapest = activeVars.stream()
+                                .filter(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
+                                .min(Comparator.comparing(
+                                        v -> v.getDiscountedPrice() != null ? v.getDiscountedPrice() : v.getPrice()))
+                                .orElse(activeVars.get(0));
+                        orig = cheapest.getDiscountedPrice() != null
+                                ? cheapest.getDiscountedPrice()
+                                : cheapest.getPrice();
+                        displayImage = cheapest.getImageUrl() != null
+                                ? cheapest.getImageUrl()
+                                : ap.getImageUrl();
+                    } else {
+                        orig = ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice();
+                        displayImage = ap.getImageUrl();
+                    }
+
+                    BigDecimal spec = a.getSpecialPrice();
+                    BigDecimal eff = (spec != null && spec.compareTo(orig) < 0) ? spec : orig;
+                    int pct = 0;
+                    if (spec != null && orig.compareTo(BigDecimal.ZERO) > 0) {
+                        pct = orig.subtract(eff).multiply(BigDecimal.valueOf(100))
+                                .divide(orig, 0, RoundingMode.HALF_UP).intValue();
+                        if (pct < 0)
+                            pct = 0;
+                    }
+
+                    return ProductAddOnResponse.builder()
+                            .id(a.getId())
+                            .addOnProductId(ap.getId())
+                            .addOnProductName(ap.getName())
+                            .addOnProductImage(displayImage)
+                            .originalPrice(orig)
+                            .specialPrice(spec)
+                            .effectivePrice(eff)
+                            .discountPercent(pct)
+                            .inStock(hasVars
+                                    ? activeVars.stream()
+                                            .anyMatch(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
+                                    : ap.isInStock())
+                            .displayOrder(a.getDisplayOrder())
+                            .hasVariations(hasVars)
+                            .variations(activeVars.stream()
+                                    .map(this::mapToVariationResponse)
+                                    .collect(Collectors.toList()))
+                            .build();
+                }).collect(Collectors.toList()))
+                .recommendedProducts(product.getRecommendedProducts().stream()
+                        .map(this::mapToSummaryResponse)
+                        .collect(Collectors.toList()))
+                .recommendationCategoryId(product.getRecommendationCategory() != null
+                        ? product.getRecommendationCategory().getId()
+                        : null)
+                .recommendationCategoryName(product.getRecommendationCategory() != null
+                        ? product.getRecommendationCategory().getName()
+                        : null)
+                .build();
+    }
+
+    private ProductResponse.ProductSummaryResponse mapToSummaryResponse(Product p) {
+        return ProductResponse.ProductSummaryResponse.builder()
+                .id(p.getId())
+                .name(p.getName())
+                .imageUrl(p.getImageUrl())
+                .price(p.getPrice())
+                .discountedPrice(p.getDiscountedPrice())
+                .inStock(p.isInStock())
+                .rating(p.getRating())
+                .label(p.getLabel())
                 .build();
     }
 
@@ -707,7 +784,6 @@ public class ProductServiceImpl implements ProductService {
         ProductVariation variation = getVariationOrThrow(productId, variationId);
 
         try {
-            // Delete old image if exists
             if (variation.getImageUrl() != null) {
                 fileStorageService.deleteFile(variation.getImageUrl());
             }
@@ -735,7 +811,7 @@ public class ProductServiceImpl implements ProductService {
         return mapToVariationResponse(saved);
     }
 
-    // ---- Private helpers ----
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private ProductVariation getVariationOrThrow(Long productId, Long variationId) {
         ProductVariation variation = productVariationRepository.findById(variationId)
@@ -865,4 +941,5 @@ public class ProductServiceImpl implements ProductService {
                 .updatedAt(v.getUpdatedAt())
                 .build();
     }
+
 }

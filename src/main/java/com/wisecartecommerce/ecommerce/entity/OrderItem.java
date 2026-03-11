@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -49,4 +51,25 @@ public class OrderItem {
     public void calculateSubtotal() {
         subtotal = price.multiply(BigDecimal.valueOf(quantity));
     }
+
+    @Column(name = "is_addon")
+    private boolean isAddon = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_product_id")
+    @JsonIgnore
+    private Product addonProduct;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_product_add_on_id")
+    @JsonIgnore
+    private ProductAddOn addonProductAddOn;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_variation_id")
+    @JsonIgnore
+    private ProductVariation addonVariation;
+
+    @Column(name = "addon_price", precision = 10, scale = 2)
+    private BigDecimal addonPrice;
 }

@@ -35,16 +35,11 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     private static final BigDecimal CENTS = BigDecimal.valueOf(100);
     private static final BigDecimal FALLBACK_SHIPPING_FEE = new BigDecimal("150.00");
     private static final BigDecimal FALLBACK_UPCOUNTRY_FEE = new BigDecimal("50.00");
-
-    /**
-     * Always returns live settings from DB.
-     * Falls back to yaml props if DB has no row yet.
-     */
     private FlashExpressSettings s() {
         return settingsService.getSettings();
     }
 
-    // ─── Rate Estimation ─────────────────────────────────────────────────────
+
 
     @Override
     public FlashShippingRateResponse estimateRate(Address dstAddress, int weightGrams, int expressCategory) {

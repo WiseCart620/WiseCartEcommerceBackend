@@ -72,15 +72,35 @@ public class Product {
     private BigDecimal widthCm;
     private BigDecimal heightCm;
 
-    /**
-     * Weight in kilograms — used by Flash Express shipping estimation.
-     * Falls back to 500 g if null or zero.
-     */
+    @Column(name = "lazada_url", length = 2048)
+    private String lazadaUrl;
+
+    @Column(name = "shopee_url", length = 2048)
+    private String shopeeUrl;
+
+    @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("displayOrder ASC")
+    @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private List<ProductAddOn> addOns = new ArrayList<>();
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "product_recommendations", joinColumns = @JoinColumn(name = "product_id"), inverseJoinColumns = @JoinColumn(name = "recommended_product_id"))
+    @Builder.Default
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private List<Product> recommendedProducts = new ArrayList<>();
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recommendation_category_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Category recommendationCategory;
+
     @Column(name = "weight_kg", precision = 8, scale = 3)
     private BigDecimal weightKg;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Category category;
 
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)

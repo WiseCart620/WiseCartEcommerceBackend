@@ -15,7 +15,7 @@ import java.util.Map;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CartResponse {
-    
+
     private Long id;
     private Long userId;
     private String sessionId;
@@ -41,7 +41,7 @@ public class CartResponse {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private LocalDateTime expiresAt;
-    
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -68,8 +68,14 @@ public class CartResponse {
         private LocalDateTime addedAt;
         private LocalDateTime updatedAt;
         private String variationName;
+        private boolean isAddon;
+        private Long addonProductId;
+        private String addonProductName;
+        private String addonVariationId;
+        private String addonVariationName;
+        private BigDecimal addonPrice;
     }
-    
+
     @Data
     @Builder
     @NoArgsConstructor

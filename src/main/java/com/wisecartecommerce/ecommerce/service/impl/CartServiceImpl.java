@@ -19,6 +19,7 @@ import com.wisecartecommerce.ecommerce.entity.Cart;
 import com.wisecartecommerce.ecommerce.entity.CartItem;
 import com.wisecartecommerce.ecommerce.entity.Coupon;
 import com.wisecartecommerce.ecommerce.entity.Product;
+import com.wisecartecommerce.ecommerce.entity.ProductAddOn;
 import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 import com.wisecartecommerce.ecommerce.entity.SavedCart;
 import com.wisecartecommerce.ecommerce.entity.SavedCartItem;
@@ -30,6 +31,7 @@ import com.wisecartecommerce.ecommerce.repository.CartItemRepository;
 import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
+import com.wisecartecommerce.ecommerce.repository.ProductAddOnRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.repository.SavedCartRepository;
@@ -54,6 +56,7 @@ public class CartServiceImpl implements CartService {
     private final CartRepository cartRepository;
     private final CartItemRepository cartItemRepository;
     private final ProductRepository productRepository;
+    private final ProductAddOnRepository productAddOnRepository;
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
     private final SavedCartRepository savedCartRepository;
@@ -70,7 +73,6 @@ public class CartServiceImpl implements CartService {
     @Transactional
     public CartResponse getCart() {
         User user = getCurrentUser();
-        // Create cart if it doesn't exist yet (first visit)
         Cart cart = cartRepository.findByUserIdWithItems(user.getId())
                 .orElseGet(() -> createNewCart(user));
         return mapToCartResponse(cart);
@@ -84,8 +86,7 @@ public class CartServiceImpl implements CartService {
                 .orElseGet(() -> createNewCart(user));
 
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(
-                        () -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
         if (!product.isActive()) {
             throw new CustomException("Product is not available");
@@ -116,29 +117,67 @@ public class CartServiceImpl implements CartService {
             itemOriginalPrice = product.getPrice();
         }
 
-        // For variations, find existing item by both product AND variation
-        CartItem existingItem = request.getVariationId() != null
-                ? getItemByProductAndVariation(cart, request.getProductId(), request.getVariationId())
-                : cart.getItemByProductId(request.getProductId());
+        // For regular (non-addon) items, merge with existing cart item if present
+        if (request.getAddonProductAddOnId() == null) {
+            CartItem existingItem = request.getVariationId() != null
+                    ? getItemByProductAndVariation(cart, request.getProductId(), request.getVariationId())
+                    : cart.getItemByProductId(request.getProductId());
 
-        if (existingItem != null) {
-            int newQuantity = existingItem.getQuantity() + request.getQuantity();
-            if (newQuantity > 100) {
-                throw new CustomException("Maximum quantity per item is 100");
+            if (existingItem != null) {
+                int newQuantity = existingItem.getQuantity() + request.getQuantity();
+                if (newQuantity > 100) {
+                    throw new CustomException("Maximum quantity per item is 100");
+                }
+                existingItem.setQuantity(newQuantity);
+                existingItem.setPrice(itemPrice);
+                existingItem.setOriginalPrice(itemOriginalPrice);
+            } else {
+                CartItem newItem = CartItem.builder()
+                        .cart(cart)
+                        .product(product)
+                        .quantity(request.getQuantity())
+                        .price(itemPrice)
+                        .originalPrice(itemOriginalPrice)
+                        .variation(variation)
+                        .build();
+                cart.getItems().add(newItem);
             }
-            existingItem.setQuantity(newQuantity);
-            existingItem.setPrice(itemPrice);
-            existingItem.setOriginalPrice(itemOriginalPrice);
         } else {
-            CartItem newItem = CartItem.builder()
+            // ── Add-on item: always add as a separate line item ────────────────
+            ProductAddOn addOn = productAddOnRepository.findById(request.getAddonProductAddOnId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Add-on not found"));
+
+            BigDecimal addonPrice;
+            ProductVariation addonVariation = null;
+
+            if (request.getAddonVariationId() != null) {
+                addonVariation = productVariationRepository.findById(request.getAddonVariationId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Add-on variation not found"));
+                addonPrice = addonVariation.getDiscountedPrice() != null
+                        ? addonVariation.getDiscountedPrice()
+                        : addonVariation.getPrice();
+            } else {
+                Product ap = addOn.getAddOnProduct();
+                BigDecimal orig = ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice();
+                addonPrice = (addOn.getSpecialPrice() != null && addOn.getSpecialPrice().compareTo(orig) < 0)
+                        ? addOn.getSpecialPrice()
+                        : orig;
+            }
+
+            CartItem addonItem = CartItem.builder()
                     .cart(cart)
-                    .product(product)
-                    .quantity(request.getQuantity())
-                    .price(itemPrice)
-                    .originalPrice(itemOriginalPrice)
-                    .variation(variation) // FIXED: use variation object, not variationId
+                    .product(addOn.getAddOnProduct())
+                    .variation(addonVariation)
+                    .quantity(1)
+                    .price(addonPrice)
+                    .originalPrice(addonPrice)
+                    .isAddon(true)
+                    .addonProduct(addOn.getAddOnProduct())
+                    .addonProductAddOn(addOn)
+                    .addonVariation(addonVariation)
+                    .addonPrice(addonPrice)
                     .build();
-            cart.getItems().add(newItem);
+            cart.getItems().add(addonItem);
         }
 
         cart.calculateTotals();
@@ -148,9 +187,11 @@ public class CartServiceImpl implements CartService {
         return mapToCartResponse(savedCart);
     }
 
+    // Returns an existing non-addon cart item matching both product and variation
     private CartItem getItemByProductAndVariation(Cart cart, Long productId, Long variationId) {
         return cart.getItems().stream()
-                .filter(item -> item.getProduct().getId().equals(productId)
+                .filter(item -> !item.isAddon()
+                        && item.getProduct().getId().equals(productId)
                         && !item.getSavedForLater()
                         && item.getVariation() != null
                         && item.getVariation().getId().equals(variationId))
@@ -321,7 +362,6 @@ public class CartServiceImpl implements CartService {
             throw new CustomException("Coupon code is required");
         }
 
-        // Validate first (throws if invalid)
         Coupon coupon = validateCouponFully(couponCode.trim().toUpperCase(), cart, user);
 
         if (Boolean.TRUE.equals(request.getValidateOnly())) {
@@ -329,7 +369,6 @@ public class CartServiceImpl implements CartService {
             return mapToCartResponse(cart);
         }
 
-        // Apply the coupon
         applyCouponToCart(cart, coupon);
         Cart savedCart = cartRepository.save(cart);
 
@@ -474,7 +513,6 @@ public class CartServiceImpl implements CartService {
         result.put("freeShippingThreshold", freeThreshold);
         result.put("subtotal", cart.getSubtotal());
 
-        // ── Free shipping shortcut ─────────────────────────────────────────────
         if (cart.getSubtotal().compareTo(freeThreshold) >= 0) {
             result.put("isEligibleForFreeShipping", true);
             result.put("standardShipping", BigDecimal.ZERO);
@@ -485,13 +523,11 @@ public class CartServiceImpl implements CartService {
 
         result.put("isEligibleForFreeShipping", false);
 
-        // ── Resolve destination from saved address or raw fields ───────────────
         String province = null, city = null, postal = postalCode;
 
         if (addressId != null) {
             Address address = addressRepository.findById(addressId).orElse(null);
             if (address != null) {
-                // Validate address belongs to this user
                 if (address.getUser() != null && !address.getUser().getId().equals(user.getId())) {
                     throw new CustomException("Address does not belong to current user");
                 }
@@ -501,7 +537,6 @@ public class CartServiceImpl implements CartService {
             }
         }
 
-        // ── Not enough info to call Flash → return placeholder ─────────────────
         if (province == null || city == null || postal == null) {
             result.put("standardShipping", new BigDecimal("150.00"));
             result.put("onTimeShipping", new BigDecimal("300.00"));
@@ -510,13 +545,10 @@ public class CartServiceImpl implements CartService {
             return result;
         }
 
-        // ── Calculate cart weight ──────────────────────────────────────────────
         int totalWeightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
         result.put("totalWeightGrams", totalWeightGrams);
 
-        // ── Call Flash Express for standard + on-time rates in parallel ────────
         try {
-            // Standard (category 1)
             FlashShippingRateResponse standard = flashShippingService.estimateRateManual(
                     province, city, postal, totalWeightGrams, 1);
 
@@ -530,7 +562,6 @@ public class CartServiceImpl implements CartService {
             result.put("pricePolicyText", standard.getPricePolicyText());
             result.put("expressLabel", standard.getExpressLabel());
 
-            // On-time (category 2)
             try {
                 FlashShippingRateResponse onTime = flashShippingService.estimateRateManual(
                         province, city, postal, totalWeightGrams, 2);
@@ -539,7 +570,6 @@ public class CartServiceImpl implements CartService {
                     onTimeFee = onTimeFee.add(onTime.getUpCountryFee());
                 result.put("onTimeShipping", onTimeFee);
             } catch (Exception e) {
-                // On-time not available for this route — estimate from standard
                 result.put("onTimeShipping",
                         standardFee.multiply(new BigDecimal("1.8")).setScale(2, RoundingMode.HALF_UP));
                 log.debug("On-time rate unavailable for {}/{}: {}", city, province, e.getMessage());
@@ -672,7 +702,7 @@ public class CartServiceImpl implements CartService {
         return mapToCartResponse(cart);
     }
 
-    // ============ PRIVATE HELPERS ============
+    // ── Private helpers ───────────────────────────────────────────────────────
 
     private Cart createNewCart(User user) {
         Cart cart = Cart.builder()
@@ -792,7 +822,7 @@ public class CartServiceImpl implements CartService {
         String imageUrl = product.getImageUrl();
         boolean inStock = product.isInStock();
         int stockQuantity = product.getStockQuantity();
-        String variationName = null; 
+        String variationName = null;
 
         if (cartItem.getVariation() != null) {
             ProductVariation variation = cartItem.getVariation();
@@ -801,7 +831,13 @@ public class CartServiceImpl implements CartService {
             }
             inStock = variation.isInStock();
             stockQuantity = variation.getStockQuantity() != null ? variation.getStockQuantity() : 0;
-            variationName = variation.getName(); 
+            variationName = variation.getName();
+        }
+
+        // Add-on label: use the add-on variation name if present, else the add-on product name
+        String addonVariationName = null;
+        if (cartItem.isAddon() && cartItem.getAddonVariation() != null) {
+            addonVariationName = cartItem.getAddonVariation().getName();
         }
 
         return CartResponse.CartItemResponse.builder()
@@ -815,7 +851,12 @@ public class CartServiceImpl implements CartService {
                 .subtotal(cartItem.getSubtotal())
                 .inStock(inStock)
                 .stockQuantity(stockQuantity)
-                .variationName(variationName) 
+                .variationName(variationName)
+                .isAddon(cartItem.isAddon())
+                .addonProductId(cartItem.isAddon() && cartItem.getAddonProduct() != null
+                        ? cartItem.getAddonProduct().getId() : null)
+                .addonVariationName(addonVariationName)
+                .addonPrice(cartItem.getAddonPrice())
                 .giftWrap(cartItem.getGiftWrap())
                 .giftMessage(cartItem.getGiftMessage())
                 .notes(cartItem.getNotes())

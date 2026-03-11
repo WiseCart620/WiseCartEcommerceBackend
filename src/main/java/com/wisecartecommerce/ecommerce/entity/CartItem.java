@@ -5,6 +5,8 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -21,6 +23,27 @@ public class CartItem {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @EqualsAndHashCode.Include
     private Long id;
+
+    @Column(name = "is_addon")
+    private boolean isAddon = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_product_id")
+    @JsonIgnore
+    private Product addonProduct;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_product_add_on_id")
+    @JsonIgnore
+    private ProductAddOn addonProductAddOn;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "addon_variation_id")
+    @JsonIgnore
+    private ProductVariation addonVariation;
+
+    @Column(name = "addon_price", precision = 10, scale = 2)
+    private BigDecimal addonPrice;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "cart_id", nullable = false)

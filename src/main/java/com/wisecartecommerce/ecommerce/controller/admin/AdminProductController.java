@@ -67,6 +67,19 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", products));
     }
 
+    @GetMapping("/search")
+    public ResponseEntity<?> searchProducts(
+            @RequestParam(defaultValue = "") String q,
+            @RequestParam(defaultValue = "50") int size) {
+        List<ProductResponse> results = q.isBlank()
+                ? productService.getAllProducts(
+                        org.springframework.data.domain.PageRequest.of(0, size,
+                                org.springframework.data.domain.Sort.by("createdAt").descending()),
+                        null, null, null).getContent()
+                : productService.searchProducts(q, size);
+        return ResponseEntity.ok(ApiResponse.success("Products found", results));
+    }
+
     @GetMapping("/{id}")
     @Operation(summary = "Get product by ID")
     public ResponseEntity<ApiResponse<ProductResponse>> getProductById(

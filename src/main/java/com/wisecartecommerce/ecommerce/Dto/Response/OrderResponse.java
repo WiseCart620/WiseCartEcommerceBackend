@@ -1,6 +1,5 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -43,7 +42,7 @@ public class OrderResponse {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -57,8 +56,14 @@ public class OrderResponse {
         private Integer quantity;
         private BigDecimal subtotal;
         private String variationName;
+        private boolean isAddon;
+        private Long addonProductId;
+        private String addonProductName;
+        private String addonVariationId;
+        private String addonVariationName;
+        private BigDecimal addonPrice;
     }
-    
+
     @Data
     @Builder
     @NoArgsConstructor
@@ -73,7 +78,7 @@ public class OrderResponse {
         private LocalDateTime createdAt;
         private LocalDateTime completedAt;
     }
-    
+
     @Data
     @Builder
     @NoArgsConstructor

@@ -61,4 +61,9 @@ public class ProductRequest {
 
     @Size(max = 30, message = "Label must be 30 characters or less")
     private String label;
+
+    private String lazadaUrl;
+    private String shopeeUrl;
+    private List<Long> recommendedProductIds;
+    private Long recommendationCategoryId;
 }
