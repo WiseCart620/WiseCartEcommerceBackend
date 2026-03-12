@@ -42,7 +42,7 @@ public class FileStorageServiceImpl implements FileStorageService {
     
     @Override
     public String uploadFile(MultipartFile file, String folder) throws IOException {
-        validateImageFile(file); // Validate as image for general uploads
+        validateImageFile(file);
         return saveFile(file, folder, folder);
     }
     
@@ -124,7 +124,7 @@ public class FileStorageServiceImpl implements FileStorageService {
             throw new IllegalArgumentException("Only image files are allowed");
         }
         
-        if (file.getSize() > 5 * 1024 * 1024) { // 5MB
+        if (file.getSize() > 5 * 1024 * 1024) {
             throw new IllegalArgumentException("File size must be less than 5MB");
         }
     }

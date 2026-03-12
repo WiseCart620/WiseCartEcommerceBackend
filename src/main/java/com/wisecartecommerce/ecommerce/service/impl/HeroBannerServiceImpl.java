@@ -50,7 +50,6 @@ public class HeroBannerServiceImpl {
 
         if (image != null && !image.isEmpty()) {
             try {
-                // Reuse product image upload — stores in same bucket/folder
                 String url = fileStorageService.uploadProductImage(image, saved.getId());
                 saved.setImageUrl(url);
                 saved = bannerRepository.save(saved);

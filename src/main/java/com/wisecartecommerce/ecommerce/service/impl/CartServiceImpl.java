@@ -64,6 +64,19 @@ public class CartServiceImpl implements CartService {
     private final AddressRepository addressRepository;
     private final FlashExpressShippingService flashShippingService;
     private final ShippingWeightCalculator weightCalculator;
+    private final com.wisecartecommerce.ecommerce.repository.AppSettingsRepository appSettingsRepository;
+
+    private java.math.BigDecimal getVatRate() {
+        return appSettingsRepository.findAll().stream()
+                .findFirst().map(s -> s.getVatRate())
+                .orElse(new java.math.BigDecimal("0.12"));
+    }
+
+    private java.math.BigDecimal getFreeShippingThreshold() {
+        return appSettingsRepository.findAll().stream()
+                .findFirst().map(s -> s.getFreeShippingThreshold())
+                .orElse(new java.math.BigDecimal("599"));
+    }
 
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -86,7 +99,8 @@ public class CartServiceImpl implements CartService {
                 .orElseGet(() -> createNewCart(user));
 
         Product product = productRepository.findById(request.getProductId())
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
+                .orElseThrow(
+                        () -> new ResourceNotFoundException("Product not found with id: " + request.getProductId()));
 
         if (!product.isActive()) {
             throw new CustomException("Product is not available");
@@ -110,14 +124,16 @@ public class CartServiceImpl implements CartService {
             itemPrice = variation.getDiscountedPrice() != null ? variation.getDiscountedPrice() : variation.getPrice();
             itemOriginalPrice = variation.getPrice();
         } else {
-            if (product.getStockQuantity() < request.getQuantity()) {
+            if (request.getAddonProductAddOnId() == null
+                    && product.getStockQuantity() < request.getQuantity()) {
                 throw new CustomException("Insufficient stock. Available: " + product.getStockQuantity());
             }
-            itemPrice = product.getDiscountedPrice() != null ? product.getDiscountedPrice() : product.getPrice();
+            itemPrice = (request.getAddonProductAddOnId() == null && product.getDiscountedPrice() != null)
+                    ? product.getDiscountedPrice()
+                    : product.getPrice();
             itemOriginalPrice = product.getPrice();
         }
 
-        // For regular (non-addon) items, merge with existing cart item if present
         if (request.getAddonProductAddOnId() == null) {
             CartItem existingItem = request.getVariationId() != null
                     ? getItemByProductAndVariation(cart, request.getProductId(), request.getVariationId())
@@ -143,7 +159,6 @@ public class CartServiceImpl implements CartService {
                 cart.getItems().add(newItem);
             }
         } else {
-            // ── Add-on item: always add as a separate line item ────────────────
             ProductAddOn addOn = productAddOnRepository.findById(request.getAddonProductAddOnId())
                     .orElseThrow(() -> new ResourceNotFoundException("Add-on not found"));
 
@@ -153,13 +168,16 @@ public class CartServiceImpl implements CartService {
             if (request.getAddonVariationId() != null) {
                 addonVariation = productVariationRepository.findById(request.getAddonVariationId())
                         .orElseThrow(() -> new ResourceNotFoundException("Add-on variation not found"));
-                addonPrice = addonVariation.getDiscountedPrice() != null
+                BigDecimal varPrice = addonVariation.getDiscountedPrice() != null
                         ? addonVariation.getDiscountedPrice()
                         : addonVariation.getPrice();
+                addonPrice = addOn.getSpecialPrice() != null
+                        ? addOn.getSpecialPrice()
+                        : varPrice;
             } else {
                 Product ap = addOn.getAddOnProduct();
                 BigDecimal orig = ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice();
-                addonPrice = (addOn.getSpecialPrice() != null && addOn.getSpecialPrice().compareTo(orig) < 0)
+                addonPrice = addOn.getSpecialPrice() != null
                         ? addOn.getSpecialPrice()
                         : orig;
             }
@@ -187,7 +205,6 @@ public class CartServiceImpl implements CartService {
         return mapToCartResponse(savedCart);
     }
 
-    // Returns an existing non-addon cart item matching both product and variation
     private CartItem getItemByProductAndVariation(Cart cart, Long productId, Long variationId) {
         return cart.getItems().stream()
                 .filter(item -> !item.isAddon()
@@ -508,7 +525,7 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
         Map<String, Object> result = new HashMap<>();
-        BigDecimal freeThreshold = new BigDecimal("2500");
+        BigDecimal freeThreshold = getFreeShippingThreshold();
 
         result.put("freeShippingThreshold", freeThreshold);
         result.put("subtotal", cart.getSubtotal());
@@ -594,7 +611,7 @@ public class CartServiceImpl implements CartService {
         Cart cart = cartRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
-        BigDecimal taxRate = new BigDecimal("0.08");
+        BigDecimal taxRate = getVatRate();
         BigDecimal taxAmount = cart.getSubtotal().multiply(taxRate);
 
         Map<String, Object> taxEstimate = new HashMap<>();
@@ -701,8 +718,6 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
         return mapToCartResponse(cart);
     }
-
-    // ── Private helpers ───────────────────────────────────────────────────────
 
     private Cart createNewCart(User user) {
         Cart cart = Cart.builder()
@@ -834,10 +849,21 @@ public class CartServiceImpl implements CartService {
             variationName = variation.getName();
         }
 
-        // Add-on label: use the add-on variation name if present, else the add-on product name
         String addonVariationName = null;
-        if (cartItem.isAddon() && cartItem.getAddonVariation() != null) {
-            addonVariationName = cartItem.getAddonVariation().getName();
+        if (cartItem.isAddon()) {
+            if (cartItem.getAddonVariation() != null) {
+                ProductVariation av = cartItem.getAddonVariation();
+                if (av.getImageUrl() != null && !av.getImageUrl().isBlank()) {
+                    imageUrl = av.getImageUrl();
+                }
+                inStock = av.isInStock();
+                stockQuantity = av.getStockQuantity() != null ? av.getStockQuantity() : 0;
+                addonVariationName = av.getName();
+            } else {
+                inStock = cartItem.getAddonProduct() != null
+                        ? cartItem.getAddonProduct().isInStock()
+                        : product.isInStock();
+            }
         }
 
         return CartResponse.CartItemResponse.builder()
@@ -845,8 +871,12 @@ public class CartServiceImpl implements CartService {
                 .productId(product.getId())
                 .productName(product.getName())
                 .productImage(imageUrl)
-                .price(cartItem.getPrice())
-                .originalPrice(cartItem.getOriginalPrice())
+                .price(cartItem.isAddon() && cartItem.getAddonPrice() != null
+                        ? cartItem.getAddonPrice()
+                        : cartItem.getPrice())
+                .originalPrice(cartItem.isAddon() && cartItem.getAddonPrice() != null
+                        ? cartItem.getAddonPrice()
+                        : cartItem.getOriginalPrice())
                 .quantity(cartItem.getQuantity())
                 .subtotal(cartItem.getSubtotal())
                 .inStock(inStock)
@@ -854,7 +884,8 @@ public class CartServiceImpl implements CartService {
                 .variationName(variationName)
                 .isAddon(cartItem.isAddon())
                 .addonProductId(cartItem.isAddon() && cartItem.getAddonProduct() != null
-                        ? cartItem.getAddonProduct().getId() : null)
+                        ? cartItem.getAddonProduct().getId()
+                        : null)
                 .addonVariationName(addonVariationName)
                 .addonPrice(cartItem.getAddonPrice())
                 .giftWrap(cartItem.getGiftWrap())

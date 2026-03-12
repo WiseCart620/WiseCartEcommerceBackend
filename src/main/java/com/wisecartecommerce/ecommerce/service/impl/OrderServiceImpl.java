@@ -864,6 +864,8 @@ public class OrderServiceImpl implements OrderService {
                 .price(item.getPrice())
                 .quantity(item.getQuantity())
                 .subtotal(item.getSubtotal())
+                .isAddon(item.isAddon())
+                .addonPrice(item.getAddonPrice())
                 .build();
     }
 

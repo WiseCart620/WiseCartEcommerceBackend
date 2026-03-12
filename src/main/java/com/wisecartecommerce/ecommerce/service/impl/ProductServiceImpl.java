@@ -640,26 +640,15 @@ public class ProductServiceImpl implements ProductService {
                             .collect(Collectors.toList());
                     boolean hasVars = !activeVars.isEmpty();
 
-                    // For variation-based products, derive price/image from cheapest in-stock
-                    // variation
-                    BigDecimal orig;
-                    String displayImage;
-                    if (hasVars) {
-                        ProductVariation cheapest = activeVars.stream()
-                                .filter(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
-                                .min(Comparator.comparing(
-                                        v -> v.getDiscountedPrice() != null ? v.getDiscountedPrice() : v.getPrice()))
-                                .orElse(activeVars.get(0));
-                        orig = cheapest.getDiscountedPrice() != null
-                                ? cheapest.getDiscountedPrice()
-                                : cheapest.getPrice();
-                        displayImage = cheapest.getImageUrl() != null
-                                ? cheapest.getImageUrl()
-                                : ap.getImageUrl();
-                    } else {
-                        orig = ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice();
-                        displayImage = ap.getImageUrl();
-                    }
+                    // Always use base product price and image for display before variation is
+                    // chosen
+                    BigDecimal orig = hasVars
+                            ? activeVars.stream()
+                                    .map(v -> v.getDiscountedPrice() != null ? v.getDiscountedPrice() : v.getPrice())
+                                    .filter(Objects::nonNull)
+                                    .min(Comparator.naturalOrder())
+                                    .orElse(ap.getPrice())
+                            : (ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice());
 
                     BigDecimal spec = a.getSpecialPrice();
                     BigDecimal eff = (spec != null && spec.compareTo(orig) < 0) ? spec : orig;
@@ -675,7 +664,7 @@ public class ProductServiceImpl implements ProductService {
                             .id(a.getId())
                             .addOnProductId(ap.getId())
                             .addOnProductName(ap.getName())
-                            .addOnProductImage(displayImage)
+                            .addOnProductImage(ap.getImageUrl())
                             .originalPrice(orig)
                             .specialPrice(spec)
                             .effectivePrice(eff)

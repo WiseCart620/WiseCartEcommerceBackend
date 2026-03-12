@@ -76,6 +76,7 @@ public class SecurityConfig {
                                                 // Other public endpoints
                                                 .requestMatchers(
                                                                 "/error",
+                                                                "/announcements/**", "/api/announcements/**",
                                                                 "/files/serve/**", "/api/files/serve/**",
                                                                 "/uploads/**", "/api/uploads/**",
                                                                 "/public/**", "/api/public/**",

@@ -102,6 +102,8 @@ public class CartItem {
     @PrePersist
     @PreUpdate
     protected void onSave() {
+        if (isAddon)
+            return;
         if (product != null && price == null) {
             price = product.getDiscountedPrice();
             originalPrice = product.getPrice();

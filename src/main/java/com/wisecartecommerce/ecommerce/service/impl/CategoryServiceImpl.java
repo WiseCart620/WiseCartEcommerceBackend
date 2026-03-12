@@ -45,22 +45,12 @@ public class CategoryServiceImpl implements CategoryService {
         log.info("Fetching category statistics");
 
         Map<String, Object> stats = new HashMap<>();
-
-        // Get total counts
         long totalCategories = categoryRepository.count();
         long activeCategories = categoryRepository.countByActiveTrue();
         long inactiveCategories = categoryRepository.countByActiveFalse();
-
-        // Get categories with products
         long categoriesWithProducts = categoryRepository.countCategoriesWithProducts();
-
-        // Get root categories (no parent)
         long rootCategories = categoryRepository.countByParentIsNull();
-
-        // Get categories by level (you'll need to add this method to repository)
         List<Object[]> categoriesByLevel = categoryRepository.countCategoriesByLevel();
-
-        // Get top categories by product count
         List<Object[]> topCategoriesByProducts = categoryRepository.findTopCategoriesByProductCount(5);
 
         stats.put("totalCategories", totalCategories);

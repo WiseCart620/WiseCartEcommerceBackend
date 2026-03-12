@@ -29,9 +29,7 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
 
-    // Default sections seeded on first run
     private static final List<String[]> DEFAULT_SECTIONS = List.of(
-            // {sectionKey, title, subtitle}
             new String[] { "FEATURED", "Featured Products", "Handpicked just for you" },
             new String[] { "HOT_DEALS", "Hot Deals", "Limited time discounts" },
             new String[] { "NEW_ARRIVALS", "New Arrivals", "Fresh from the collection" },

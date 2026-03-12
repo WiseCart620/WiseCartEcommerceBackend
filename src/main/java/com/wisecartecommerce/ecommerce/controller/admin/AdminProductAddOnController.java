@@ -51,36 +51,22 @@ public class AdminProductAddOnController {
                 .map(a -> {
                     Product ap = a.getAddOnProduct();
                     List<ProductVariation> activeVariations = ap.getVariations().stream()
-                            .filter(v -> v.isActive())
+                            .filter(ProductVariation::isActive)
                             .collect(Collectors.toList());
                     boolean hasVariations = !activeVariations.isEmpty();
+                    BigDecimal orig = hasVariations
+                            ? activeVariations.stream()
+                                    .map(v -> v.getDiscountedPrice() != null ? v.getDiscountedPrice() : v.getPrice())
+                                    .min(Comparator.naturalOrder())
+                                    .orElse(ap.getPrice())
+                            : (ap.getDiscountedPrice() != null ? ap.getDiscountedPrice() : ap.getPrice());
 
-                    // ── For products WITH variations, derive price/image from cheapest in-stock
-                    // variation
-                    BigDecimal orig;
-                    String displayImage;
-                    if (hasVariations) {
-                        ProductVariation cheapest = activeVariations.stream()
-                                .filter(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
-                                .min(Comparator.comparing(
-                                        v -> v.getDiscountedPrice() != null ? v.getDiscountedPrice() : v.getPrice()))
-                                .orElse(activeVariations.get(0));
-
-                        orig = cheapest.getDiscountedPrice() != null
-                                ? cheapest.getDiscountedPrice()
-                                : cheapest.getPrice();
-                        displayImage = cheapest.getImageUrl() != null
-                                ? cheapest.getImageUrl()
-                                : ap.getImageUrl();
-                    } else {
-                        orig = ap.getDiscountedPrice() != null
-                                ? ap.getDiscountedPrice()
-                                : ap.getPrice();
-                        displayImage = ap.getImageUrl();
-                    }
+                    // Always use base product image — customer picking variation will update it in
+                    // UI
+                    String displayImage = ap.getImageUrl();
 
                     BigDecimal spec = a.getSpecialPrice();
-                    BigDecimal eff = (spec != null && spec.compareTo(orig) < 0) ? spec : orig;
+                    BigDecimal eff = (spec != null) ? spec : orig;
                     int pct = 0;
                     if (spec != null && orig.compareTo(BigDecimal.ZERO) > 0) {
                         pct = orig.subtract(eff)
@@ -110,8 +96,8 @@ public class AdminProductAddOnController {
                     m.put("id", a.getId());
                     m.put("addOnProductId", ap.getId());
                     m.put("addOnProductName", ap.getName());
-                    m.put("addOnProductImage", displayImage); // ← variation image or fallback
-                    m.put("originalPrice", orig); // ← variation price, not 0.01
+                    m.put("addOnProductImage", displayImage);
+                    m.put("originalPrice", orig);
                     m.put("specialPrice", spec);
                     m.put("effectivePrice", eff);
                     m.put("discountPercent", pct);
@@ -128,6 +114,8 @@ public class AdminProductAddOnController {
 
         return ResponseEntity.ok(ApiResponse.success("Add-ons retrieved", result));
     }
+
+
 
     @PostMapping("/addons")
     public ResponseEntity<?> addAddOn(@PathVariable Long productId,
