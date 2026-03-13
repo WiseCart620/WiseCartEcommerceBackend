@@ -16,7 +16,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 
 @RestController
-@RequestMapping("/public")  // ✅ CHANGED: Removed /api prefix
+@RequestMapping("/public")
 @RequiredArgsConstructor
 @Tag(name = "Public", description = "Public APIs (no authentication required)")
 public class PublicController {
