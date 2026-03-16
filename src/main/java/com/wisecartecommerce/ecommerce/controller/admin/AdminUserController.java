@@ -41,14 +41,14 @@ public class AdminUserController {
             @RequestParam(required = false) String role,
             @RequestParam(required = false) Boolean enabled,
             @RequestParam(required = false) String search) {
-        
-        Sort sort = sortDir.equalsIgnoreCase("asc") 
-            ? Sort.by(sortBy).ascending() 
-            : Sort.by(sortBy).descending();
-        
+
+        Sort sort = sortDir.equalsIgnoreCase("asc")
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
         Pageable pageable = PageRequest.of(page, size, sort);
         Page<UserResponse> users = userService.getAllUsers(pageable, role, enabled, search);
-        
+
         return ResponseEntity.ok(ApiResponse.success("Users retrieved", users));
     }
 
@@ -64,7 +64,7 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse<UserResponse>> updateUser(
             @PathVariable Long id,
             @Valid @RequestBody UpdateUserRequest request) {
-        
+
         UserResponse response = userService.updateUser(id, request);
         return ResponseEntity.ok(ApiResponse.success("User updated", response));
     }
@@ -74,7 +74,7 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse<UserResponse>> updateUserRole(
             @PathVariable Long id,
             @RequestParam String role) {
-        
+
         UserResponse response = userService.updateUserRole(id, role);
         return ResponseEntity.ok(ApiResponse.success("User role updated", response));
     }
@@ -84,10 +84,10 @@ public class AdminUserController {
     public ResponseEntity<ApiResponse<UserResponse>> updateUserStatus(
             @PathVariable Long id,
             @RequestParam boolean enabled) {
-        
+
         UserResponse response = userService.updateUserStatus(id, enabled);
         return ResponseEntity.ok(ApiResponse.success(
-            enabled ? "User enabled" : "User disabled", response));
+                enabled ? "User enabled" : "User disabled", response));
     }
 
     @DeleteMapping("/{id}")
@@ -108,7 +108,7 @@ public class AdminUserController {
     @Operation(summary = "Get recent users")
     public ResponseEntity<ApiResponse<List<UserResponse>>> getRecentUsers(
             @RequestParam(defaultValue = "10") int limit) {
-        
+
         List<UserResponse> users = userService.getRecentUsers(limit);
         return ResponseEntity.ok(ApiResponse.success("Recent users retrieved", users));
     }
@@ -122,8 +122,12 @@ public class AdminUserController {
 
     @PostMapping("/{id}/reset-password")
     @Operation(summary = "Reset user password")
-    public ResponseEntity<ApiResponse<Void>> resetUserPassword(@PathVariable Long id) {
-        userService.resetUserPassword(id);
+    public ResponseEntity<ApiResponse<Void>> resetUserPassword(
+            @PathVariable Long id,
+            @RequestBody(required = false) java.util.Map<String, String> body) {
+
+        String newPassword = (body != null) ? body.get("password") : null;
+        userService.resetUserPassword(id, newPassword);
         return ResponseEntity.ok(ApiResponse.success("Password reset initiated", null));
     }
 }

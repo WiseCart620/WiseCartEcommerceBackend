@@ -9,16 +9,13 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 
-
 @RestController
-@RequestMapping("/admin/settings")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('ADMIN')")
 public class AppSettingsController {
 
     private final AppSettingsRepository repository;
 
-private AppSettings getOrCreateSettings() {
+    private AppSettings getOrCreateSettings() {
         return repository.findAll().stream()
                 .findFirst()
                 .orElseGet(this::createDefaultSettings);
@@ -34,12 +31,22 @@ private AppSettings getOrCreateSettings() {
         return repository.save(defaults);
     }
 
-    @GetMapping
+    @GetMapping("/admin/settings")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AppSettings> getSettings() {
         return ResponseEntity.ok(getOrCreateSettings());
     }
 
-    @PutMapping
+    @GetMapping("/public/storefront/settings")
+    public ResponseEntity<?> getPublicSettings() {
+        AppSettings s = getOrCreateSettings();
+        return ResponseEntity.ok(java.util.Map.of(
+                "cartEnabled", s.isCartEnabled(),
+                "buyNowEnabled", s.isBuyNowEnabled()));
+    }
+
+    @PutMapping("/admin/settings")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AppSettings> updateSettings(@RequestBody AppSettings request) {
         AppSettings settings = getOrCreateSettings();
         settings.setVatRate(request.getVatRate());
@@ -47,6 +54,8 @@ private AppSettings getOrCreateSettings() {
         settings.setStoreName(request.getStoreName());
         settings.setStoreEmail(request.getStoreEmail());
         settings.setStorePhone(request.getStorePhone());
+        settings.setCartEnabled(request.isCartEnabled());
+        settings.setBuyNowEnabled(request.isBuyNowEnabled());
         return ResponseEntity.ok(repository.save(settings));
     }
 }

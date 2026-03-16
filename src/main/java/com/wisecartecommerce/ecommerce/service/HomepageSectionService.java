@@ -7,8 +7,16 @@ import java.util.List;
 
 public interface HomepageSectionService {
     List<HomepageSectionResponse> getAllSections();
+
     List<HomepageSectionResponse> getActiveSections();
+
     HomepageSectionResponse getSectionByKey(String sectionKey);
+
     HomepageSectionResponse updateSection(String sectionKey, HomepageSectionRequest request);
+
+    HomepageSectionResponse createSection(HomepageSectionRequest request);
+
+    void deleteSection(String sectionKey);
+
     void initializeDefaultSections();
 }

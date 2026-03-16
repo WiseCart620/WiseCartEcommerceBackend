@@ -9,6 +9,8 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -54,5 +56,18 @@ public class AdminHomepageSectionController {
     public ResponseEntity<ApiResponse<Void>> initializeSections() {
         homepageSectionService.initializeDefaultSections();
         return ResponseEntity.ok(ApiResponse.success("Default sections initialized", null));
+    }
+
+    @PostMapping
+    public ResponseEntity<HomepageSectionResponse> createSection(
+            @RequestBody HomepageSectionRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(homepageSectionService.createSection(request));
+    }
+
+    @DeleteMapping("/{sectionKey}")
+    public ResponseEntity<Void> deleteSection(@PathVariable String sectionKey) {
+        homepageSectionService.deleteSection(sectionKey);
+        return ResponseEntity.noContent().build();
     }
 }

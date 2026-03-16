@@ -840,25 +840,39 @@ public class CartServiceImpl implements CartService {
         String variationName = null;
 
         if (cartItem.getVariation() != null) {
-            ProductVariation variation = cartItem.getVariation();
-            if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank()) {
-                imageUrl = variation.getImageUrl();
+            try {
+                ProductVariation variation = cartItem.getVariation();
+                if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank()) {
+                    imageUrl = variation.getImageUrl();
+                }
+                inStock = variation.isInStock();
+                stockQuantity = variation.getStockQuantity() != null ? variation.getStockQuantity() : 0;
+                variationName = variation.getName();
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+                log.warn("Variation no longer exists for cart item {}, treating as out of stock", cartItem.getId());
+                inStock = false;
+                stockQuantity = 0;
+                variationName = null;
             }
-            inStock = variation.isInStock();
-            stockQuantity = variation.getStockQuantity() != null ? variation.getStockQuantity() : 0;
-            variationName = variation.getName();
         }
 
         String addonVariationName = null;
         if (cartItem.isAddon()) {
             if (cartItem.getAddonVariation() != null) {
-                ProductVariation av = cartItem.getAddonVariation();
-                if (av.getImageUrl() != null && !av.getImageUrl().isBlank()) {
-                    imageUrl = av.getImageUrl();
+                try {
+                    ProductVariation av = cartItem.getAddonVariation();
+                    if (av.getImageUrl() != null && !av.getImageUrl().isBlank()) {
+                        imageUrl = av.getImageUrl();
+                    }
+                    inStock = av.isInStock();
+                    stockQuantity = av.getStockQuantity() != null ? av.getStockQuantity() : 0;
+                    addonVariationName = av.getName();
+                } catch (jakarta.persistence.EntityNotFoundException e) {
+                    log.warn("Addon variation no longer exists for cart item {}", cartItem.getId());
+                    inStock = false;
+                    stockQuantity = 0;
+                    addonVariationName = null;
                 }
-                inStock = av.isInStock();
-                stockQuantity = av.getStockQuantity() != null ? av.getStockQuantity() : 0;
-                addonVariationName = av.getName();
             } else {
                 inStock = cartItem.getAddonProduct() != null
                         ? cartItem.getAddonProduct().isInStock()

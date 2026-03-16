@@ -13,6 +13,7 @@ import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.*;
 import com.wisecartecommerce.ecommerce.service.EmailService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.service.NotificationService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
 import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
 import com.wisecartecommerce.ecommerce.util.CouponValidator;
@@ -27,7 +28,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -54,6 +54,7 @@ public class OrderServiceImpl implements OrderService {
     // ── Services ───────────────────────────────────────────────────────────────
     private final EmailService emailService;
     private final FlashExpressShippingService flashShippingService;
+    private final NotificationService notificationService;
 
     // ── Utilities ──────────────────────────────────────────────────────────────
     private final ShippingWeightCalculator weightCalculator;
@@ -234,6 +235,19 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         emailService.sendOrderConfirmationEmail(saved);
+        notificationService.createNotification(
+                user,
+                "Order Placed Successfully",
+                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
+                "ORDER",
+                saved.getId(),
+                "ORDER");
+        notificationService.createAdminNotification(
+                "New Order Received",
+                "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
+                "ORDER",
+                saved.getId(),
+                "ORDER");
         log.info("Order created: {} | user: {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), user.getEmail(), discountAmount, shippingAmount);
 
@@ -401,6 +415,12 @@ public class OrderServiceImpl implements OrderService {
         }
 
         emailService.sendOrderConfirmationEmail(saved);
+        notificationService.createAdminNotification(
+                "New Guest Order Received",
+                "Guest order #" + saved.getOrderNumber() + " was placed by " + request.getGuestEmail() + ".",
+                "ORDER",
+                saved.getId(),
+                "ORDER");
         log.info("Guest order created: {} | {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), request.getGuestEmail(), discountAmount, shippingAmount);
         return mapToGuestOrderResponse(saved);
@@ -583,8 +603,21 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order updated = orderRepository.save(order);
-        if (prev != status)
+        if (prev != status) {
             emailService.sendOrderStatusUpdateEmail(updated);
+            if (updated.getUser() != null) {
+                String title = "Order Status Updated";
+                String message = switch (status) {
+                    case PROCESSING -> "Your order #" + updated.getOrderNumber() + " is now being processed.";
+                    case SHIPPED -> "Your order #" + updated.getOrderNumber() + " has been shipped via Flash Express.";
+                    case DELIVERED -> "Your order #" + updated.getOrderNumber() + " has been delivered. Enjoy!";
+                    case CANCELLED -> "Your order #" + updated.getOrderNumber() + " has been cancelled.";
+                    default -> "Your order #" + updated.getOrderNumber() + " status changed to " + status.name();
+                };
+                notificationService.createNotification(
+                        updated.getUser(), title, message, "ORDER", updated.getId(), "ORDER");
+            }
+        }
         log.info("Order {} status: {} → {}", order.getOrderNumber(), prev, status);
         return mapToOrderResponse(updated);
     }

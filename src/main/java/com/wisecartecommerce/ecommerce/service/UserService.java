@@ -37,5 +37,5 @@ public interface UserService {
     Object getUserStats();
     List<UserResponse> getRecentUsers(int limit);
     String generateImpersonationToken(Long id);
-    void resetUserPassword(Long id);
+    void resetUserPassword(Long id, String newPassword);
 }

@@ -80,6 +80,7 @@ public class SecurityConfig {
                                                                 "/files/serve/**", "/api/files/serve/**",
                                                                 "/uploads/**", "/api/uploads/**",
                                                                 "/public/**", "/api/public/**",
+                                                                "/storefront/settings", "/api/storefront/settings",
                                                                 "/v3/api-docs/**",
                                                                 "/swagger-ui/**",
                                                                 "/swagger-ui.html")
@@ -87,7 +88,7 @@ public class SecurityConfig {
 
                                                 // Role-based access
                                                 .requestMatchers("/admin/**", "/api/admin/**").hasRole("ADMIN")
-                                                .requestMatchers("/customer/**", "/api/customer/**").hasRole("CUSTOMER")
+                                                .requestMatchers("/customer/**", "/api/customer/**").hasAnyRole("CUSTOMER", "ADMIN")
 
                                                 // Authenticated endpoints
                                                 .requestMatchers(

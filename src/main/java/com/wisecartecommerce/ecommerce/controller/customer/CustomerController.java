@@ -16,22 +16,26 @@ import com.wisecartecommerce.ecommerce.Dto.Request.UpdateProfileRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.UserResponse;
 import com.wisecartecommerce.ecommerce.service.UserService;
-
+import com.wisecartecommerce.ecommerce.service.NotificationService;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.NotificationResponse;
 import java.util.List;
 import java.util.Map;
 
 @RestController
 @RequestMapping("/customer")
 @RequiredArgsConstructor
-@PreAuthorize("hasRole('CUSTOMER')")
+@PreAuthorize("hasAnyRole('CUSTOMER', 'ADMIN')")
 @SecurityRequirement(name = "bearerAuth")
 @Tag(name = "Customer", description = "Customer management APIs")
 public class CustomerController {
 
     private final UserService userService;
+    private final NotificationService notificationService;
 
     // ==================== Profile Management ====================
-    
+
     @GetMapping("/profile")
     @Operation(summary = "Get customer profile")
     public ResponseEntity<ApiResponse<UserResponse>> getProfile() {
@@ -71,7 +75,7 @@ public class CustomerController {
     }
 
     // ==================== Address Management ====================
-    
+
     @GetMapping("/addresses")
     @Operation(summary = "Get customer addresses")
     public ResponseEntity<ApiResponse<Object>> getAddresses() {
@@ -110,19 +114,15 @@ public class CustomerController {
         return ResponseEntity.ok(ApiResponse.success("Default address set successfully", address));
     }
 
-
-
-
     // ==================== Account Management ====================
-    
+
     @GetMapping("/dashboard")
     @Operation(summary = "Get customer dashboard")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getDashboard() {
         // Get various stats for customer dashboard
         Map<String, Object> dashboard = Map.of(
-                "wishlistCount", 0
-        );
-        
+                "wishlistCount", 0);
+
         return ResponseEntity.ok(ApiResponse.success("Dashboard retrieved", dashboard));
     }
 
@@ -148,7 +148,7 @@ public class CustomerController {
     }
 
     // ==================== Support Tickets ====================
-    
+
     @PostMapping("/support/ticket")
     @Operation(summary = "Create support ticket")
     public ResponseEntity<ApiResponse<Void>> createSupportTicket(
@@ -170,33 +170,48 @@ public class CustomerController {
     }
 
     // ==================== Notifications ====================
-    
+
     @GetMapping("/notifications")
     @Operation(summary = "Get notifications")
-    public ResponseEntity<ApiResponse<Object>> getNotifications(
+    public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getNotifications(
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-        // Implement notification retrieval
-        Object notifications = Map.of("notifications", List.of(), "unreadCount", 0);
+            @RequestParam(defaultValue = "10") int size) {
+        Page<NotificationResponse> notifications = notificationService.getNotifications(
+                PageRequest.of(page, size));
         return ResponseEntity.ok(ApiResponse.success("Notifications retrieved", notifications));
+    }
+
+    @GetMapping("/notifications/unread-count")
+    @Operation(summary = "Get unread notification count")
+    public ResponseEntity<ApiResponse<Long>> getUnreadCount() {
+        Long count = notificationService.getUnreadCount();
+        return ResponseEntity.ok(ApiResponse.success("Unread count retrieved", count));
     }
 
     @PatchMapping("/notifications/{notificationId}/read")
     @Operation(summary = "Mark notification as read")
-    public ResponseEntity<ApiResponse<Void>> markNotificationAsRead(@PathVariable Long notificationId) {
-        // Implement mark as read logic
-        return ResponseEntity.ok(ApiResponse.success("Notification marked as read", null));
+    public ResponseEntity<ApiResponse<NotificationResponse>> markNotificationAsRead(
+            @PathVariable Long notificationId) {
+        NotificationResponse response = notificationService.markAsRead(notificationId);
+        return ResponseEntity.ok(ApiResponse.success("Notification marked as read", response));
+    }
+
+    @PatchMapping("/notifications/read-all")
+    @Operation(summary = "Mark all notifications as read")
+    public ResponseEntity<ApiResponse<Void>> markAllNotificationsAsRead() {
+        notificationService.markAllAsRead();
+        return ResponseEntity.ok(ApiResponse.success("All notifications marked as read", null));
     }
 
     @DeleteMapping("/notifications/{notificationId}")
     @Operation(summary = "Delete notification")
     public ResponseEntity<ApiResponse<Void>> deleteNotification(@PathVariable Long notificationId) {
-        // Implement delete notification logic
+        notificationService.deleteNotification(notificationId);
         return ResponseEntity.ok(ApiResponse.success("Notification deleted", null));
     }
 
     // ==================== Payment Methods ====================
-    
+
     @GetMapping("/payment-methods")
     @Operation(summary = "Get saved payment methods")
     public ResponseEntity<ApiResponse<Object>> getPaymentMethods() {
@@ -220,7 +235,7 @@ public class CustomerController {
     }
 
     // ==================== Downloads ====================
-    
+
     @GetMapping("/downloads")
     @Operation(summary = "Get digital downloads")
     public ResponseEntity<ApiResponse<Object>> getDigitalDownloads(

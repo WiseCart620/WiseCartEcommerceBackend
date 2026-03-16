@@ -152,4 +152,25 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
         Optional<Order> findByOrderNumberAndGuestEmail(String orderNumber, String guestEmail);
 
+        @Query(value = """
+                        SELECT
+                            COALESCE(o.guest_email, u.email)                           AS email,
+                            COALESCE(o.guest_phone, a.phone)                           AS phone,
+                            COALESCE(
+                                CONCAT(o.guest_first_name, ' ', o.guest_last_name),
+                                CONCAT(u.first_name, ' ', u.last_name)
+                            )                                                           AS name
+                        FROM orders o
+                        LEFT JOIN users u     ON o.user_id = u.id
+                        LEFT JOIN addresses a ON o.shipping_address_id = a.id
+                        WHERE COALESCE(o.guest_email, u.email) IS NOT NULL
+                        GROUP BY
+                            COALESCE(o.guest_email, u.email),
+                            COALESCE(o.guest_phone, a.phone),
+                            COALESCE(
+                                CONCAT(o.guest_first_name, ' ', o.guest_last_name),
+                                CONCAT(u.first_name, ' ', u.last_name)
+                            )
+                        """, nativeQuery = true)
+        List<Object[]> findAllCustomerContacts();
 }

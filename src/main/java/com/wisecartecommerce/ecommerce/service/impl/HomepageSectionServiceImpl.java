@@ -33,7 +33,53 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
             new String[] { "FEATURED", "Featured Products", "Handpicked just for you" },
             new String[] { "HOT_DEALS", "Hot Deals", "Limited time discounts" },
             new String[] { "NEW_ARRIVALS", "New Arrivals", "Fresh from the collection" },
-            new String[] { "BEST_SELLERS", "Best Sellers", "Most popular products" });
+            new String[] { "BEST_SELLERS", "Best Sellers", "Most popular products" },
+            new String[] { "COMING_SOON", "Coming Soon", "Launching shortly — stay tuned" });
+
+    private static final Set<String> PROTECTED_KEYS = Set.of(
+            "FEATURED", "HOT_DEALS", "NEW_ARRIVALS", "BEST_SELLERS", "COMING_SOON");
+
+    @Override
+    public HomepageSectionResponse createSection(HomepageSectionRequest request) {
+        String key = request.getSectionKey();
+        if (key == null || key.isBlank()) {
+            throw new IllegalArgumentException("sectionKey is required");
+        }
+        // Normalise: upper-snake
+        key = key.trim().toUpperCase().replaceAll("[^A-Z0-9]+", "_");
+
+        if (sectionRepository.findBySectionKey(key).isPresent()) {
+            throw new IllegalArgumentException("A section with key '" + key + "' already exists");
+        }
+
+        long maxOrder = sectionRepository.findAllByOrderByDisplayOrderAsc()
+                .stream().mapToLong(HomepageSectionConfig::getDisplayOrder).max().orElse(-1L);
+
+        HomepageSectionConfig s = HomepageSectionConfig.builder()
+                .sectionKey(key)
+                .title(request.getTitle() != null ? request.getTitle() : key)
+                .subtitle(request.getSubtitle() != null ? request.getSubtitle() : "")
+                .mode(request.getMode() != null ? request.getMode() : SectionMode.AUTO)
+                .limit(request.getLimit() != null ? request.getLimit() : 8)
+                .active(request.isActive())
+                .displayOrder((int) (maxOrder + 1))
+                .build();
+
+        return mapToResponse(sectionRepository.save(s));
+    }
+
+    @Override
+    public void deleteSection(String sectionKey) {
+        if (PROTECTED_KEYS.contains(sectionKey.toUpperCase())) {
+            throw new IllegalArgumentException("Default sections cannot be deleted");
+        }
+        HomepageSectionConfig s = sectionRepository.findBySectionKey(sectionKey)
+                .orElseThrow(() -> new ResourceNotFoundException("Section not found: " + sectionKey));
+        sectionProductRepository.deleteAllBySectionId(s.getId());
+        sectionRepository.delete(s);
+        log.info("Deleted custom homepage section: {}", sectionKey);
+    }
+    
 
     @Override
     @Transactional(readOnly = true)

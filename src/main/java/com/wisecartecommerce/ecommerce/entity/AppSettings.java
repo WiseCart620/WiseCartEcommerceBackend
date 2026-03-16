@@ -35,6 +35,14 @@ public class AppSettings {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
+    @Column(name = "cart_enabled", nullable = false)
+    @Builder.Default
+    private boolean cartEnabled = true;
+
+    @Column(name = "buy_now_enabled", nullable = false)
+    @Builder.Default
+    private boolean buyNowEnabled = true;
+
     @PrePersist
     @PreUpdate
     public void onUpdate() {

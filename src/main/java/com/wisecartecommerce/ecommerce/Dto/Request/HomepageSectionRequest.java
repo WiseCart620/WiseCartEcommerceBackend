@@ -13,9 +13,13 @@ import java.util.List;
 @AllArgsConstructor
 public class HomepageSectionRequest {
 
+    
+
     @NotBlank(message = "Title is required")
     @Size(max = 100)
     private String title;
+
+    private String sectionKey;
 
     private boolean showTimer;
 
