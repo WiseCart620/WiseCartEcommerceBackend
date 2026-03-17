@@ -1017,12 +1017,10 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public List<ProductImage> getDescriptionImages(Long productId) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
-
-        // Assuming you have a ProductImageRepository
+        if (!productRepository.existsById(productId)) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
         return productImageRepository.findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
     }
 
