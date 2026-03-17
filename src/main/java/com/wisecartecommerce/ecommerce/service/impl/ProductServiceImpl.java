@@ -34,7 +34,6 @@ import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
-import com.wisecartecommerce.ecommerce.repository.ProductImageRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.repository.ReviewRepository;
@@ -54,7 +53,7 @@ public class ProductServiceImpl implements ProductService {
     private final ReviewRepository reviewRepository;
     private final FileStorageService fileStorageService;
     private final ProductVariationRepository productVariationRepository;
-    private final ProductImageRepository productImageRepository; // Added missing repository
+    private final ProductImageRepository productImageRepository;
 
     // ── Write methods with cache eviction ─────────────────────────────────────
     @Override
