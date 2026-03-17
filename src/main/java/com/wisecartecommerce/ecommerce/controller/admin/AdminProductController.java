@@ -101,22 +101,13 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.success("Description images retrieved", descriptionImages));
     }
 
-    @GetMapping("/{productId}/description-images")
-    @Operation(summary = "Get product with its description images")
-    public ResponseEntity<ApiResponse<ProductResponse>> getProductWithDescriptionImages(
-            @PathVariable Long productId) {
-        ProductResponse product = productService.getProductById(productId);
-        return ResponseEntity.ok(ApiResponse.success("Product retrieved", product));
-    }
-
     @GetMapping("/search")
-    public ResponseEntity<?> searchProducts(
+    public ResponseEntity<ApiResponse<List<ProductResponse>>> searchProducts(
             @RequestParam(defaultValue = "") String q,
             @RequestParam(defaultValue = "50") int size) {
         List<ProductResponse> results = q.isBlank()
                 ? productService.getAllProducts(
-                        org.springframework.data.domain.PageRequest.of(0, size,
-                                org.springframework.data.domain.Sort.by("createdAt").descending()),
+                        PageRequest.of(0, size, Sort.by("createdAt").descending()),
                         null, null, null).getContent()
                 : productService.searchProducts(q, size);
         return ResponseEntity.ok(ApiResponse.success("Products found", results));
