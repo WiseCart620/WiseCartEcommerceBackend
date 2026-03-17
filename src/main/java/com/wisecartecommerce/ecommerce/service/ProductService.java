@@ -12,6 +12,7 @@ import com.wisecartecommerce.ecommerce.Dto.Request.ProductVariationRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.DescriptionImageResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductVariationResponse;
+import com.wisecartecommerce.ecommerce.entity.ProductImage;
 
 public interface ProductService {
 
@@ -92,4 +93,6 @@ public interface ProductService {
     void deleteDescriptionImage(Long productId, Long imageId);
 
     void processDescriptionImages(Long productId, String description);
+
+    List<ProductImage> getDescriptionImages(Long productId);
 }

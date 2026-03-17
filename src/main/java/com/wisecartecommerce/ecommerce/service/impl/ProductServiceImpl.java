@@ -34,6 +34,7 @@ import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
+import com.wisecartecommerce.ecommerce.repository.ProductImageRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.repository.ReviewRepository;
@@ -136,7 +137,7 @@ public class ProductServiceImpl implements ProductService {
             try {
                 // Generate unique filename
                 String fileName = generateFileName(file);
-                
+
                 // Upload file using FileStorageService
                 String fileUrl = fileStorageService.uploadProductImage(file, productId);
 
@@ -188,10 +189,10 @@ public class ProductServiceImpl implements ProductService {
         try {
             // Delete from storage
             fileStorageService.deleteFile(image.getImageUrl());
-            
+
             // Delete from database
             productImageRepository.delete(image);
-            
+
             log.info("Description image deleted: {} for product ID: {}", imageId, productId);
         } catch (Exception e) {
             log.error("Failed to delete description image: {}", imageId, e);
@@ -214,11 +215,11 @@ public class ProductServiceImpl implements ProductService {
 
         // Extract image URLs from the description HTML
         List<String> usedImageUrls = new ArrayList<>();
-        
+
         // Simple regex to find image src attributes in HTML
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("src=\"([^\"]+)\"");
         java.util.regex.Matcher matcher = pattern.matcher(description);
-        
+
         while (matcher.find()) {
             usedImageUrls.add(matcher.group(1));
         }
@@ -263,11 +264,11 @@ public class ProductServiceImpl implements ProductService {
     private String generateFileName(MultipartFile file) {
         String originalFilename = file.getOriginalFilename();
         String extension = "";
-        
+
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
-        
+
         return UUID.randomUUID().toString() + extension;
     }
 
@@ -345,7 +346,7 @@ public class ProductServiceImpl implements ProductService {
     public void deleteProduct(Long id) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
-        
+
         // Delete all images (both gallery and description)
         product.getImages().forEach(image -> {
             try {
@@ -354,7 +355,7 @@ public class ProductServiceImpl implements ProductService {
                 log.error("Failed to delete image: {}", image.getImageUrl(), e);
             }
         });
-        
+
         productRepository.delete(product);
         log.info("Product deleted: {} (ID: {})", product.getName(), product.getId());
     }
@@ -429,8 +430,8 @@ public class ProductServiceImpl implements ProductService {
                     .build();
             if (isPrimary) {
                 product.getImages().stream()
-                    .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
-                    .forEach(img -> img.setPrimary(false));
+                        .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
+                        .forEach(img -> img.setPrimary(false));
             }
             product.addImage(productImage);
             if (product.getGalleryImages().size() == 1) {
@@ -459,15 +460,15 @@ public class ProductServiceImpl implements ProductService {
                 .filter(img -> img.getId().equals(imageId))
                 .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Product image not found"));
-        
+
         try {
             fileStorageService.deleteFile(imageToDelete.getImageUrl());
         } catch (Exception e) {
             log.error("Failed to delete image file: {}", imageToDelete.getImageUrl(), e);
         }
-        
+
         product.getImages().remove(imageToDelete);
-        
+
         // Update primary image if needed
         if (imageToDelete.isPrimary() && !product.getGalleryImages().isEmpty()) {
             ProductImage newPrimary = product.getGalleryImages().get(0);
@@ -476,7 +477,7 @@ public class ProductServiceImpl implements ProductService {
         } else if (product.getGalleryImages().isEmpty()) {
             product.setImageUrl(null);
         }
-        
+
         productRepository.save(product);
         log.info("Image deleted from product: {} (ID: {})", product.getName(), productId);
     }
@@ -493,14 +494,14 @@ public class ProductServiceImpl implements ProductService {
         }
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        
+
         int nextOrder = product.getGalleryImages().stream()
                 .mapToInt(ProductImage::getDisplayOrder)
                 .max().orElse(-1) + 1;
-        
+
         boolean hasNoPrimary = product.getGalleryImages().isEmpty();
         List<ProductResponse.ProductImageResponse> results = new ArrayList<>();
-        
+
         for (int i = 0; i < files.size(); i++) {
             MultipartFile file = files.get(i);
             try {
@@ -877,7 +878,7 @@ public class ProductServiceImpl implements ProductService {
 
     private ProductResponse mapToResponse(Product product) {
         ProductResponse.ProductImageResponse[] primaryImage = {null};
-        
+
         // Get gallery images only
         List<ProductResponse.ProductImageResponse> images = product.getGalleryImages().stream()
                 .map(img -> {
@@ -1013,5 +1014,15 @@ public class ProductServiceImpl implements ProductService {
                 .rating(p.getRating())
                 .label(p.getLabel())
                 .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ProductImage> getDescriptionImages(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + productId));
+
+        // Assuming you have a ProductImageRepository
+        return productImageRepository.findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
     }
 }

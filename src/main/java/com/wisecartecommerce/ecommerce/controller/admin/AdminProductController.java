@@ -1,6 +1,8 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
-import lombok.RequiredArgsConstructor;
+import java.math.BigDecimal;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -8,7 +10,17 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductRequest;
@@ -17,17 +29,13 @@ import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.DescriptionImageResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductVariationResponse;
-import com.wisecartecommerce.ecommerce.entity.Product;
-import com.wisecartecommerce.ecommerce.entity.ProductImage;
 import com.wisecartecommerce.ecommerce.service.ProductService;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-
-import java.math.BigDecimal;
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/admin/products")
@@ -85,13 +93,13 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", products));
     }
 
+
     @GetMapping("/{productId}/description-images")
-    @Operation(summary = "Get all description images for a product")
-    public ResponseEntity<ApiResponse<List<ProductImage>>> getDescriptionImages(
+    @Operation(summary = "Get product with its description images")
+    public ResponseEntity<ApiResponse<ProductResponse>> getProductWithDescriptionImages(
             @PathVariable Long productId) {
-        Product product = productService.getProductById(productId);
-        List<ProductImage> descriptionImages = product.getDescriptionImages();
-        return ResponseEntity.ok(ApiResponse.success("Description images retrieved", descriptionImages));
+        ProductResponse product = productService.getProductById(productId);
+        return ResponseEntity.ok(ApiResponse.success("Product retrieved", product));
     }
 
     @GetMapping("/search")
