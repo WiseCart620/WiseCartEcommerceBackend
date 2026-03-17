@@ -1025,4 +1025,35 @@ public class ProductServiceImpl implements ProductService {
         // Assuming you have a ProductImageRepository
         return productImageRepository.findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<DescriptionImageResponse> getDescriptionImageResponses(Long productId) {
+        // Verify product exists
+        if (!productRepository.existsById(productId)) {
+            throw new ResourceNotFoundException("Product not found with id: " + productId);
+        }
+
+        // Get description images from repository
+        List<ProductImage> descriptionImages = productImageRepository
+                .findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
+
+        // Convert to response DTOs
+        return descriptionImages.stream()
+                .map(image -> DescriptionImageResponse.builder()
+                .id(image.getId())
+                .imageUrl(image.getImageUrl())
+                .altText(image.getAltText())
+                .fileName(extractFileName(image.getImageUrl()))
+                .build())
+                .collect(Collectors.toList());
+    }
+
+    private String extractFileName(String imageUrl) {
+        if (imageUrl == null || imageUrl.isEmpty()) {
+            return null;
+        }
+        int lastSlash = imageUrl.lastIndexOf('/');
+        return lastSlash >= 0 ? imageUrl.substring(lastSlash + 1) : imageUrl;
+    }
 }

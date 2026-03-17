@@ -93,6 +93,13 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", products));
     }
 
+    @GetMapping("/{productId}/description-images")
+    @Operation(summary = "Get all description images for a product")
+    public ResponseEntity<ApiResponse<List<DescriptionImageResponse>>> getDescriptionImages(
+            @PathVariable Long productId) {
+        List<DescriptionImageResponse> descriptionImages = productService.getDescriptionImageResponses(productId);
+        return ResponseEntity.ok(ApiResponse.success("Description images retrieved", descriptionImages));
+    }
 
     @GetMapping("/{productId}/description-images")
     @Operation(summary = "Get product with its description images")

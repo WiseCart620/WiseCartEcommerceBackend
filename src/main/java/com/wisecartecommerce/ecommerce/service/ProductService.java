@@ -95,4 +95,7 @@ public interface ProductService {
     void processDescriptionImages(Long productId, String description);
 
     List<ProductImage> getDescriptionImages(Long productId);
+    
+    // ADD THIS NEW METHOD
+    List<DescriptionImageResponse> getDescriptionImageResponses(Long productId);
 }
