@@ -8,6 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Entity
 @Table(name = "products")
@@ -182,5 +183,83 @@ public class Product {
     public void addVariation(ProductVariation variation) {
         variations.add(variation);
         variation.setProduct(this);
+    }
+
+    // ── NEW: Image type filter methods ─────────────────────────────────────────
+
+    /**
+     * Get all description images (images embedded in product description)
+     */
+    public List<ProductImage> getDescriptionImages() {
+        if (images == null) {
+            return new ArrayList<>();
+        }
+        return images.stream()
+                .filter(img -> img.getImageType() == ProductImage.ImageType.DESCRIPTION)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all gallery images (main product images)
+     */
+    public List<ProductImage> getGalleryImages() {
+        if (images == null) {
+            return new ArrayList<>();
+        }
+        return images.stream()
+                .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
+                .sorted(Comparator.comparing(ProductImage::getDisplayOrder))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Get the primary gallery image
+     */
+    public Optional<ProductImage> getPrimaryGalleryImage() {
+        return getGalleryImages().stream()
+                .filter(ProductImage::isPrimary)
+                .findFirst();
+    }
+
+    /**
+     * Check if product has any gallery images
+     */
+    public boolean hasGalleryImages() {
+        return !getGalleryImages().isEmpty();
+    }
+
+    /**
+     * Check if product has any description images
+     */
+    public boolean hasDescriptionImages() {
+        return !getDescriptionImages().isEmpty();
+    }
+
+    /**
+     * Get count of gallery images
+     */
+    public int getGalleryImagesCount() {
+        return getGalleryImages().size();
+    }
+
+    /**
+     * Get count of description images
+     */
+    public int getDescriptionImagesCount() {
+        return getDescriptionImages().size();
+    }
+
+    /**
+     * Set primary gallery image
+     */
+    public void setPrimaryGalleryImage(Long imageId) {
+        getGalleryImages().forEach(img -> {
+            img.setPrimary(img.getId().equals(imageId));
+        });
+        
+        // Update product's main imageUrl
+        getPrimaryGalleryImage().ifPresent(img -> 
+            this.setImageUrl(img.getImageUrl())
+        );
     }
 }

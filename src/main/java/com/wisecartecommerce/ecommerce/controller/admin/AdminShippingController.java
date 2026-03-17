@@ -1,15 +1,27 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
-import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
-import com.wisecartecommerce.ecommerce.repository.OrderRepository;
-import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
-import com.wisecartecommerce.ecommerce.util.OrderStatus;
-import com.wisecartecommerce.ecommerce.entity.Order;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
+import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.util.OrderStatus;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -17,13 +29,6 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
 
 @Slf4j
 @RestController
@@ -38,8 +43,8 @@ public class AdminShippingController {
     private final OrderRepository orderRepository;
 
     /**
-     * Download shipping label PDF for a given PNO.
-     * GET /admin/shipping/label/{pno}
+     * Download shipping label PDF for a given PNO. GET
+     * /admin/shipping/label/{pno}
      */
     @GetMapping("/label/{pno}")
     @Operation(summary = "Download shipping label PDF for a Flash PNO")
@@ -57,8 +62,8 @@ public class AdminShippingController {
     }
 
     /**
-     * Notify Flash Express courier to come pick up parcels.
-     * POST /admin/shipping/notify-courier
+     * Notify Flash Express courier to come pick up parcels. POST
+     * /admin/shipping/notify-courier
      *
      * Body: { "estimateParcelNumber": 5, "remark": "ASAP" }
      */
@@ -75,8 +80,7 @@ public class AdminShippingController {
     }
 
     /**
-     * Track a Flash Express order by PNO.
-     * GET /admin/shipping/track/{pno}
+     * Track a Flash Express order by PNO. GET /admin/shipping/track/{pno}
      */
     @GetMapping("/track/{pno}")
     @Operation(summary = "Track a Flash Express parcel")
@@ -84,6 +88,14 @@ public class AdminShippingController {
         FlashTrackingResponse tracking = shippingService.trackOrder(pno);
         return ResponseEntity.ok(ApiResponse.success("Tracking info retrieved", tracking));
     }
+
+    @GetMapping("/notify-courier/parcel-count")
+    @Operation(summary = "Get count of pending parcels ready for pickup")
+    public ResponseEntity<ApiResponse<Integer>> getPendingParcelCount() {
+        int count = shippingService.getPendingParcelCount();
+        return ResponseEntity.ok(ApiResponse.success("Parcel count retrieved", count));
+    }
+    
 
     @PostMapping("/cancel/{pno}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cancelByPno(@PathVariable String pno) {
@@ -146,6 +158,7 @@ public class AdminShippingController {
 
     @Data
     public static class NotifyCourierRequest {
+
         private int estimateParcelNumber = 1;
         private String remark;
     }

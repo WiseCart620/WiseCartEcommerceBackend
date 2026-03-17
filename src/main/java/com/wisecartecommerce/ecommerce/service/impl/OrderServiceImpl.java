@@ -1,26 +1,16 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
-import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
-import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
-import com.wisecartecommerce.ecommerce.entity.*;
-import com.wisecartecommerce.ecommerce.exception.CustomException;
-import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
-import com.wisecartecommerce.ecommerce.repository.*;
-import com.wisecartecommerce.ecommerce.service.EmailService;
-import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
-import com.wisecartecommerce.ecommerce.service.NotificationService;
-import com.wisecartecommerce.ecommerce.service.OrderService;
-import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
-import com.wisecartecommerce.ecommerce.util.CouponValidator;
-import com.wisecartecommerce.ecommerce.util.OrderStatus;
-import com.wisecartecommerce.ecommerce.util.ShippingWeightCalculator;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -29,11 +19,46 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
+import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
+import com.wisecartecommerce.ecommerce.entity.Address;
+import com.wisecartecommerce.ecommerce.entity.Cart;
+import com.wisecartecommerce.ecommerce.entity.CartItem;
+import com.wisecartecommerce.ecommerce.entity.Coupon;
+import com.wisecartecommerce.ecommerce.entity.CouponUsage;
+import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.entity.OrderItem;
+import com.wisecartecommerce.ecommerce.entity.Payment;
+import com.wisecartecommerce.ecommerce.entity.Product;
+import com.wisecartecommerce.ecommerce.entity.ProductVariation;
+import com.wisecartecommerce.ecommerce.entity.User;
+import com.wisecartecommerce.ecommerce.exception.CustomException;
+import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
+import com.wisecartecommerce.ecommerce.repository.AddressRepository;
+import com.wisecartecommerce.ecommerce.repository.CartRepository;
+import com.wisecartecommerce.ecommerce.repository.CouponRepository;
+import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
+import com.wisecartecommerce.ecommerce.repository.ProductRepository;
+import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
+import com.wisecartecommerce.ecommerce.repository.UserRepository;
+import com.wisecartecommerce.ecommerce.service.EmailService;
+import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.service.NotificationService;
+import com.wisecartecommerce.ecommerce.service.OrderService;
+import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
+import com.wisecartecommerce.ecommerce.util.CouponValidator;
+import com.wisecartecommerce.ecommerce.util.OrderStatus;
+import com.wisecartecommerce.ecommerce.util.ShippingWeightCalculator;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -426,21 +451,10 @@ public class OrderServiceImpl implements OrderService {
         return mapToGuestOrderResponse(saved);
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Coupon usage recording
-    // ══════════════════════════════════════════════════════════════════════════
 
-    /**
-     * Increments the coupon's global usage counter and, for authenticated users,
-     * writes a CouponUsage row so per-user limits can be enforced.
-     */
     private void recordCouponUsage(Coupon coupon, User user, String guestEmail, Order order) {
-        // Increment global counter
         coupon.setCurrentUsageCount(coupon.getCurrentUsageCount() + 1);
         couponRepository.save(coupon);
-
-        // Write usage record only for authenticated users
-        // (guests have no user account to track against)
         if (user != null) {
             CouponUsage usage = CouponUsage.builder()
                     .user(user)

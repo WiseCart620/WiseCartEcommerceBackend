@@ -1,6 +1,20 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import com.wisecartecommerce.ecommerce.Dto.Response.*;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.config.FlashExpressProperties;
 import com.wisecartecommerce.ecommerce.entity.Address;
 import com.wisecartecommerce.ecommerce.entity.FlashExpressSettings;
@@ -12,16 +26,9 @@ import com.wisecartecommerce.ecommerce.service.FlashExpressSettingsService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.util.FlashExpressClient;
 import com.wisecartecommerce.ecommerce.util.FlashExpressSignatureUtil;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Service;
-
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,15 +38,14 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     private final FlashExpressProperties props;
     private final FlashExpressClient client;
     private final FlashExpressSettingsService settingsService;
-
+    private final com.wisecartecommerce.ecommerce.repository.OrderRepository orderRepository;
     private static final BigDecimal CENTS = BigDecimal.valueOf(100);
     private static final BigDecimal FALLBACK_SHIPPING_FEE = new BigDecimal("150.00");
     private static final BigDecimal FALLBACK_UPCOUNTRY_FEE = new BigDecimal("50.00");
+
     private FlashExpressSettings s() {
         return settingsService.getSettings();
     }
-
-
 
     @Override
     public FlashShippingRateResponse estimateRate(Address dstAddress, int weightGrams, int expressCategory) {
@@ -86,7 +92,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     // ─── Create Order ─────────────────────────────────────────────────────────
-
     @Override
     public FlashOrderResult createOrder(Order order, Address shippingAddress,
             int weightGrams, int expressCategory) {
@@ -170,7 +175,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     // ─── Print Label ──────────────────────────────────────────────────────────
-
     @Override
     public byte[] printLabel(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -196,7 +200,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     // ─── Notify Courier ───────────────────────────────────────────────────────
-
     @Override
     public FlashNotifyResponse notifyCourier(int estimateParcelNumber, String remark) {
         if (!isFlashExpressConfigured()) {
@@ -262,7 +265,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     // ─── Track Order ──────────────────────────────────────────────────────────
-
     @Override
     public FlashTrackingResponse trackOrder(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -336,9 +338,7 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-
     // ─── Cancel Order ─────────────────────────────────────────────────────────
-
     @Override
     public void cancelOrder(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -373,11 +373,21 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-    // ─── Private Helpers ──────────────────────────────────────────────────────
+    @Override
+    public int getPendingParcelCount() {
+        Long count = orderRepository.countReadyForPickup(
+                List.of(
+                        com.wisecartecommerce.ecommerce.util.OrderStatus.PENDING,
+                        com.wisecartecommerce.ecommerce.util.OrderStatus.PROCESSING
+                )
+        );
+        return count != null ? count.intValue() : 0;
+    }
 
+    // ─── Private Helpers ──────────────────────────────────────────────────────
     private boolean isCod(String paymentMethod) {
-        return "COD".equalsIgnoreCase(paymentMethod) ||
-                "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
+        return "COD".equalsIgnoreCase(paymentMethod)
+                || "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
     }
 
     private int[] calculateDimensions(Order order) {
@@ -395,28 +405,32 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
                 h = variation.getHeightCm() != null ? variation.getHeightCm().intValue() : 0;
             }
 
-            if (l == 0)
+            if (l == 0) {
                 l = product.getLengthCm() != null ? product.getLengthCm().intValue() : 20;
-            if (w == 0)
+            }
+            if (w == 0) {
                 w = product.getWidthCm() != null ? product.getWidthCm().intValue() : 15;
-            if (h == 0)
+            }
+            if (h == 0) {
                 h = product.getHeightCm() != null ? product.getHeightCm().intValue() : 10;
+            }
 
             maxLength = Math.max(maxLength, l);
             maxWidth = Math.max(maxWidth, w);
             totalHeight += h * item.getQuantity();
         }
 
-        return new int[] {
-                Math.max(maxLength, 1),
-                Math.max(maxWidth, 1),
-                Math.max(totalHeight, 1)
+        return new int[]{
+            Math.max(maxLength, 1),
+            Math.max(maxWidth, 1),
+            Math.max(totalHeight, 1)
         };
     }
 
     private FlashShippingRateResponse parseRateResponse(Map<String, Object> body, int expressCategory) {
-        if (body == null)
+        if (body == null) {
             throw new CustomException("Empty response from Flash Express");
+        }
 
         Object codeObj = body.get("code");
         int code = codeObj instanceof Number n ? n.intValue() : 0;
@@ -429,8 +443,9 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
         @SuppressWarnings("unchecked")
         Map<String, Object> data = (Map<String, Object>) body.get("data");
-        if (data == null)
+        if (data == null) {
             throw new CustomException("No data in Flash Express response");
+        }
 
         BigDecimal shippingFee = centsToPHP(data.get("estimatePrice"));
         BigDecimal upCountryFee = centsToPHP(data.get("upCountryAmount"));
@@ -441,9 +456,12 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
         String pricePolicyText = pricePolicy == 2 ? "By dimensions" : "By weight";
         String expressLabel = switch (expressCategory) {
-            case 2 -> "On-Time Delivery";
-            case 4 -> "Bulky Delivery";
-            default -> "Standard Delivery";
+            case 2 ->
+                "On-Time Delivery";
+            case 4 ->
+                "Bulky Delivery";
+            default ->
+                "Standard Delivery";
         };
 
         return FlashShippingRateResponse.builder()
@@ -458,8 +476,9 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     private BigDecimal centsToPHP(Object value) {
-        if (value == null)
+        if (value == null) {
             return BigDecimal.ZERO;
+        }
         try {
             return new BigDecimal(value.toString()).divide(CENTS, 2, RoundingMode.HALF_UP);
         } catch (Exception e) {
@@ -469,30 +488,34 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
 
     private boolean isFlashExpressConfigured() {
         FlashExpressSettings s = s();
-        return s.getMchId() != null &&
-                !s.getMchId().isEmpty() &&
-                !s.getMchId().contains("YOUR_") &&
-                !s.getMchId().contains("AAXXXX") &&
-                s.getSecretKey() != null &&
-                !s.getSecretKey().isEmpty() &&
-                s.getBaseUrl() != null;
+        return s.getMchId() != null
+                && !s.getMchId().isEmpty()
+                && !s.getMchId().contains("YOUR_")
+                && !s.getMchId().contains("AAXXXX")
+                && s.getSecretKey() != null
+                && !s.getSecretKey().isEmpty()
+                && s.getBaseUrl() != null;
     }
 
     private FlashShippingRateResponse createFallbackResponse(int expressCategory, String dstPostalCode) {
-        boolean isUpCountry = dstPostalCode != null &&
-                (dstPostalCode.startsWith("4") ||
-                        dstPostalCode.startsWith("5") ||
-                        dstPostalCode.startsWith("9"));
+        boolean isUpCountry = dstPostalCode != null
+                && (dstPostalCode.startsWith("4")
+                || dstPostalCode.startsWith("5")
+                || dstPostalCode.startsWith("9"));
 
         BigDecimal shippingFee = FALLBACK_SHIPPING_FEE;
         BigDecimal upCountryFee = isUpCountry ? FALLBACK_UPCOUNTRY_FEE : BigDecimal.ZERO;
-        if (isUpCountry)
+        if (isUpCountry) {
             shippingFee = shippingFee.add(upCountryFee);
+        }
 
         String expressLabel = switch (expressCategory) {
-            case 2 -> "On-Time Delivery (Fallback)";
-            case 4 -> "Bulky Delivery (Fallback)";
-            default -> "Standard Delivery (Fallback)";
+            case 2 ->
+                "On-Time Delivery (Fallback)";
+            case 4 ->
+                "Bulky Delivery (Fallback)";
+            default ->
+                "Standard Delivery (Fallback)";
         };
 
         return FlashShippingRateResponse.builder()
@@ -507,8 +530,9 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
     }
 
     private String padPostalCode(String postalCode) {
-        if (postalCode == null)
+        if (postalCode == null) {
             return postalCode;
+        }
         return postalCode.length() < 5
                 ? String.format("%05d", Integer.parseInt(postalCode.trim()))
                 : postalCode;

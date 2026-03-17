@@ -1,5 +1,17 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.CategoryRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.CategoryResponse;
 import com.wisecartecommerce.ecommerce.entity.Category;
@@ -8,17 +20,9 @@ import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.service.CategoryService;
 import com.wisecartecommerce.ecommerce.service.FileStorageService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +35,7 @@ public class CategoryServiceImpl implements CategoryService {
     private final FileStorageService fileStorageService;
 
     @Override
+    @Cacheable("categories")
     @Transactional(readOnly = true)
     public List<CategoryResponse> getAllCategories() {
         log.info("Fetching all active categories");
@@ -65,6 +70,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @CacheEvict(value = {"categories", "categoryTree"}, allEntries = true)
     public CategoryResponse toggleCategoryStatus(Long id, boolean active) {
         log.info("Toggling category status for ID: {} to active: {}", id, active);
 
@@ -80,6 +86,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Cacheable(value = "categories", key = "#id")
     @Transactional(readOnly = true)
     public CategoryResponse getCategoryById(Long id) {
         log.info("Fetching category with ID: {}", id);
@@ -89,6 +96,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @CacheEvict(value = {"categories", "categoryTree"}, allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
         log.info("Creating new category: {}", request.getName());
 
@@ -116,6 +124,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @CacheEvict(value = {"categories", "categoryTree"}, allEntries = true)
     public CategoryResponse updateCategory(Long id, CategoryRequest request) {
         log.info("Updating category with ID: {}", id);
 
@@ -151,6 +160,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @CacheEvict(value = {"categories", "categoryTree"}, allEntries = true)
     public void deleteCategory(Long id) {
         log.info("Deleting category with ID: {}", id);
 
@@ -205,6 +215,7 @@ public class CategoryServiceImpl implements CategoryService {
     }
 
     @Override
+    @Cacheable("categoryTree")
     @Transactional(readOnly = true)
     public List<CategoryResponse> getCategoryTree() {
         log.info("Fetching category tree");

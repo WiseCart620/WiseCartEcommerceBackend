@@ -1,19 +1,22 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+import com.wisecartecommerce.ecommerce.entity.ProductImage;
+
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class ProductResponse {
+
     private Long id;
     private String name;
     private String description;
@@ -27,6 +30,7 @@ public class ProductResponse {
     private BigDecimal minDiscountedPrice;
 
     private List<ProductVariationResponse> variations;
+    private List<ProductImage> descriptionImages;
 
     private Integer stockQuantity;
     private String upc;
@@ -64,6 +68,7 @@ public class ProductResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ProductImageResponse {
+
         private Long id;
         private String imageUrl;
         private boolean isPrimary;
@@ -75,6 +80,7 @@ public class ProductResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ProductAddOnResponse {
+
         private Long id;
         private Long addOnProductId;
         private String addOnProductName;
@@ -94,6 +100,7 @@ public class ProductResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ProductSummaryResponse {
+
         private Long id;
         private String name;
         private String imageUrl;

@@ -14,8 +14,11 @@ import org.springframework.web.multipart.MultipartFile;
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductVariationRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.DescriptionImageResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductVariationResponse;
+import com.wisecartecommerce.ecommerce.entity.Product;
+import com.wisecartecommerce.ecommerce.entity.ProductImage;
 import com.wisecartecommerce.ecommerce.service.ProductService;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,7 +39,7 @@ public class AdminProductController {
 
     private final ProductService productService;
 
-    @PostMapping(consumes = { "multipart/form-data" })
+    @PostMapping(consumes = {"multipart/form-data"})
     @Operation(summary = "Create a new product")
     public ResponseEntity<ApiResponse<ProductResponse>> createProduct(
             @RequestPart("product") @Valid ProductRequest request,
@@ -44,6 +47,21 @@ public class AdminProductController {
         ProductResponse response = productService.createProduct(request, image);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success("Product created successfully", response));
+    }
+
+    @PostMapping("/{productId}/description-images")
+    @Operation(summary = "Upload images for product description")
+    public ResponseEntity<ApiResponse<List<DescriptionImageResponse>>> uploadDescriptionImages(
+            @PathVariable Long productId,
+            @RequestParam("files") List<MultipartFile> files) {
+
+        if (files.size() > 20) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Maximum 20 images allowed for description"));
+        }
+
+        List<DescriptionImageResponse> responses = productService.uploadDescriptionImages(productId, files);
+        return ResponseEntity.ok(ApiResponse.success("Description images uploaded successfully", responses));
     }
 
     @GetMapping
@@ -65,6 +83,15 @@ public class AdminProductController {
         Page<ProductResponse> products = productService.getAllProducts(pageable, categoryId, active, search);
 
         return ResponseEntity.ok(ApiResponse.success("Products retrieved", products));
+    }
+
+    @GetMapping("/{productId}/description-images")
+    @Operation(summary = "Get all description images for a product")
+    public ResponseEntity<ApiResponse<List<ProductImage>>> getDescriptionImages(
+            @PathVariable Long productId) {
+        Product product = productService.getProductById(productId);
+        List<ProductImage> descriptionImages = product.getDescriptionImages();
+        return ResponseEntity.ok(ApiResponse.success("Description images retrieved", descriptionImages));
     }
 
     @GetMapping("/search")
@@ -102,6 +129,15 @@ public class AdminProductController {
     public ResponseEntity<ApiResponse<Void>> deleteProduct(@PathVariable Long id) {
         productService.deleteProduct(id);
         return ResponseEntity.ok(ApiResponse.success("Product deleted successfully", null));
+    }
+
+    @DeleteMapping("/{productId}/description-images/{imageId}")
+    @Operation(summary = "Delete a description image")
+    public ResponseEntity<ApiResponse<Void>> deleteDescriptionImage(
+            @PathVariable Long productId,
+            @PathVariable Long imageId) {
+        productService.deleteDescriptionImage(productId, imageId);
+        return ResponseEntity.ok(ApiResponse.success("Description image deleted successfully", null));
     }
 
     @PostMapping("/{productId}/images")
@@ -169,7 +205,6 @@ public class AdminProductController {
     }
 
     // ---- Variation Endpoints ----
-
     @PostMapping("/{productId}/variations")
     @Operation(summary = "Add a variation to a product")
     public ResponseEntity<ApiResponse<ProductVariationResponse>> addVariation(

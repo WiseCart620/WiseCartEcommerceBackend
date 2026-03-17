@@ -1,16 +1,17 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.math.BigDecimal;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.ProductVariationRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.DescriptionImageResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ProductVariationResponse;
-
-import java.math.BigDecimal;
-import java.util.List;
 
 public interface ProductService {
 
@@ -57,6 +58,8 @@ public interface ProductService {
 
     List<ProductResponse> searchProducts(String query, int limit);
 
+    void incrementViewCount(Long id);
+
     ProductResponse createProduct(ProductRequest request, MultipartFile image);
 
     default ProductResponse createProduct(ProductRequest request) {
@@ -83,4 +86,10 @@ public interface ProductService {
 
     List<ProductResponse.ProductImageResponse> addProductImages(Long productId, List<MultipartFile> files);
 
+    // NEW: Description image management methods
+    List<DescriptionImageResponse> uploadDescriptionImages(Long productId, List<MultipartFile> files);
+
+    void deleteDescriptionImage(Long productId, Long imageId);
+
+    void processDescriptionImages(Long productId, String description);
 }

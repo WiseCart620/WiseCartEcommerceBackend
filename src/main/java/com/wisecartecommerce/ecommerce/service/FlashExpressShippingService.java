@@ -1,9 +1,9 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
-import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
 import com.wisecartecommerce.ecommerce.entity.Address;
 import com.wisecartecommerce.ecommerce.entity.Order;
 
@@ -26,6 +26,8 @@ public interface FlashExpressShippingService {
 
     /** Track a parcel by PNO. */
     FlashTrackingResponse trackOrder(String pno);
+
+    int getPendingParcelCount();
 
     /** Cancel a Flash Express order by PNO. */
     void cancelOrder(String pno);

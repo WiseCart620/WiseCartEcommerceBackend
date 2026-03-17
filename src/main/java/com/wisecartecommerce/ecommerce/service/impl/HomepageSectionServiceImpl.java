@@ -1,22 +1,30 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import com.wisecartecommerce.ecommerce.Dto.Request.HomepageSectionRequest;
-import com.wisecartecommerce.ecommerce.Dto.Response.HomepageSectionResponse;
-import com.wisecartecommerce.ecommerce.entity.*;
-import com.wisecartecommerce.ecommerce.enums.SectionMode;
-import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
-import com.wisecartecommerce.ecommerce.repository.*;
-import com.wisecartecommerce.ecommerce.service.CategoryService;
-import com.wisecartecommerce.ecommerce.service.HomepageSectionService;
-import com.wisecartecommerce.ecommerce.service.ProductService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import com.wisecartecommerce.ecommerce.Dto.Request.HomepageSectionRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.HomepageSectionResponse;
+import com.wisecartecommerce.ecommerce.entity.Category;
+import com.wisecartecommerce.ecommerce.entity.HomepageSectionConfig;
+import com.wisecartecommerce.ecommerce.entity.HomepageSectionProduct;
+import com.wisecartecommerce.ecommerce.entity.Product;
+import com.wisecartecommerce.ecommerce.enums.SectionMode;
+import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
+import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
+import com.wisecartecommerce.ecommerce.repository.HomepageSectionProductRepository;
+import com.wisecartecommerce.ecommerce.repository.HomepageSectionRepository;
+import com.wisecartecommerce.ecommerce.repository.ProductRepository;
+import com.wisecartecommerce.ecommerce.service.HomepageSectionService;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +48,7 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
             "FEATURED", "HOT_DEALS", "NEW_ARRIVALS", "BEST_SELLERS", "COMING_SOON");
 
     @Override
+    @CacheEvict(value = "homepageSections", allEntries = true)
     public HomepageSectionResponse createSection(HomepageSectionRequest request) {
         String key = request.getSectionKey();
         if (key == null || key.isBlank()) {
@@ -69,6 +78,7 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     }
 
     @Override
+    @CacheEvict(value = "homepageSections", allEntries = true)
     public void deleteSection(String sectionKey) {
         if (PROTECTED_KEYS.contains(sectionKey.toUpperCase())) {
             throw new IllegalArgumentException("Default sections cannot be deleted");
@@ -89,6 +99,7 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     }
 
     @Override
+    @Cacheable("homepageSections")
     @Transactional(readOnly = true)
     public List<HomepageSectionResponse> getActiveSections() {
         return sectionRepository.findByActiveTrueOrderByDisplayOrderAsc()
@@ -104,6 +115,7 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     }
 
     @Override
+    @CacheEvict(value = "homepageSections", allEntries = true)
     public HomepageSectionResponse updateSection(String sectionKey, HomepageSectionRequest request) {
         log.info("Updating homepage section: {}", sectionKey);
 
