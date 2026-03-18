@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WiseCart — Reply to Your Message</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f4f8;
+      padding: 20px;
+      color: #2d3748;
+    }
+
+    .wrapper {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+    }
+
+    /* ── Header ──────────────────────────────────────── */
+    .header {
+      background: linear-gradient(135deg, #1e3c8a 0%, #2563eb 100%);
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .header-icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    .header h1 {
+      color: #ffffff;
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      margin: 0;
+    }
+
+    .header p {
+      color: rgba(255, 255, 255, 0.85);
+      font-size: 14px;
+      margin-top: 6px;
+    }
+
+    /* ── Body ────────────────────────────────────────── */
+    .body {
+      padding: 36px 30px;
+    }
+
+    .greeting {
+      font-size: 16px;
+      color: #1e293b;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .greeting strong {
+      color: #1e3c8a;
+    }
+
+    /* Subject badge */
+    .subject-badge {
+      display: inline-block;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      color: #1e40af;
+      font-size: 13px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      margin-bottom: 24px;
+    }
+
+    /* Reply box */
+    .reply-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+    }
+
+    .reply-box {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #2563eb;
+      border-radius: 0 10px 10px 0;
+      padding: 20px 22px;
+      margin-bottom: 28px;
+    }
+
+    .reply-box p {
+      color: #334155;
+      font-size: 15px;
+      line-height: 1.75;
+      white-space: pre-wrap;
+      margin: 0;
+    }
+
+    /* CTA */
+    .cta-block {
+      background: #f0f9ff;
+      border: 1px solid #bae6fd;
+      border-radius: 10px;
+      padding: 20px 24px;
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .cta-block p {
+      color: #0369a1;
+      font-size: 14px;
+      margin-bottom: 14px;
+      line-height: 1.5;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: linear-gradient(135deg, #1e3c8a 0%, #2563eb 100%);
+      color: #ffffff !important;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 12px 28px;
+      border-radius: 8px;
+      letter-spacing: 0.3px;
+    }
+
+    /* Divider */
+    .divider {
+      border: none;
+      border-top: 1px solid #e2e8f0;
+      margin: 0 0 24px;
+    }
+
+    .note {
+      font-size: 13px;
+      color: #64748b;
+      line-height: 1.6;
+    }
+
+    /* ── Footer ──────────────────────────────────────── */
+    .footer {
+      background: #f8fafc;
+      padding: 24px 30px;
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .footer-brand {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3c8a;
+      margin-bottom: 6px;
+    }
+
+    .footer-links {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    .footer-copy {
+      font-size: 12px;
+      color: #cbd5e1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="header-icon">💬</div>
+      <h1>We've Replied to Your Message</h1>
+      <p>WiseCart Support Team</p>
+    </div>
+
+    <!-- Body -->
+    <div class="body">
+
+      <p class="greeting">
+        Hi <strong th:text="${customerName}">Customer</strong>,<br /><br />
+        Good news — our support team has responded to your inquiry. Here's what they said:
+      </p>
+
+      <div class="subject-badge">
+        Re: <span th:text="${originalSubject}">Your Subject</span>
+      </div>
+
+      <p class="reply-label">📩 Reply from WiseCart Support</p>
+      <div class="reply-box">
+        <p th:text="${replyMessage}">Reply message content goes here...</p>
+      </div>
+
+      <!-- CTA to view full thread on website -->
+      <div class="cta-block">
+        <p>
+          You can view your full conversation thread and reply back<br />
+          directly on the WiseCart website.
+        </p>
+        <a href="https://wisecart.ph/my-messages" class="cta-button">
+          View My Messages →
+        </a>
+      </div>
+
+      <hr class="divider" />
+
+      <p class="note">
+        If you have further questions, simply log into your account and visit
+        <strong>My Messages</strong> to continue the conversation. Alternatively,
+        you can reply to this email and our team will get back to you.
+      </p>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p class="footer-brand">WiseCart</p>
+      <p class="footer-links">sales@wisecart.ph</p>
+      <p class="footer-copy">© 2026 WiseCart. All rights reserved.</p>
+      <p class="footer-copy" style="margin-top: 4px;">
+        This email was sent because you contacted us through wisecart.ph
+      </p>
+    </div>
+
+  </div>
+</body>
+
+</html>

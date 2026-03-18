@@ -1,13 +1,18 @@
 package com.wisecartecommerce.ecommerce.Dto.Request;
 
-import jakarta.validation.constraints.*;
+import java.math.BigDecimal;
+import java.util.List;
+
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.math.BigDecimal;
-import java.util.List;
 
 @Data
 @Builder
@@ -19,7 +24,7 @@ public class ProductRequest {
     @Size(min = 2, max = 255, message = "Product name must be between 2 and 255 characters")
     private String name;
 
-    @Size(max = 1000, message = "Description must be less than 1000 characters")
+    @Size(max = 65535, message = "Description must be less than 65535 characters")
     private String description;
 
     @NotNull(message = "Price is required")

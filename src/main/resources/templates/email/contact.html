@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact Message</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #f0f4f8;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.5;
+      color: #2d3748;
+    }
+
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1e3c8a 0%, #2563eb 100%);
+      color: white;
+      padding: 40px 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .header p {
+      margin: 8px 0 0;
+      opacity: 0.9;
+      font-size: 15px;
+    }
+
+    .body {
+      padding: 40px 30px;
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e3c8a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 15px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .info-box {
+      background: #f8fafc;
+      border-radius: 10px;
+      padding: 20px;
+      border: 1px solid #e2e8f0;
+      margin-bottom: 25px;
+    }
+
+    .info-row {
+      display: flex;
+      padding: 8px 0;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+    }
+
+    .info-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      width: 80px;
+      shrink: 0;
+      padding-top: 2px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      color: #0f172a;
+      font-weight: 500;
+      flex: 1;
+    }
+
+    .info-value a {
+      color: #2563eb;
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .message-box {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 20px;
+    }
+
+    .message-box p {
+      color: #334155;
+      white-space: pre-wrap;
+      margin: 0;
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    .reply-hint {
+      margin-top: 25px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+    }
+
+    .reply-hint p {
+      margin: 0;
+      color: #1e3c8a;
+      font-size: 14px;
+    }
+
+    .footer {
+      background: #f8fafc;
+      padding: 25px 30px;
+      text-align: center;
+      font-size: 13px;
+      color: #64748b;
+      border-top: 1px solid #e2e8f0;
+    }
+
+    .footer p { margin-bottom: 4px; }
+
+    .copyright {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <!-- Header -->
+    <div class="header">
+      <h1>✉️ New Contact Message</h1>
+      <p>WiseCart Customer Inquiry</p>
+    </div>
+
+    <!-- Body -->
+    <div class="body">
+
+      <!-- Sender Info -->
+      <h2 class="section-title">Sender Information</h2>
+      <div class="info-box">
+        <div class="info-row">
+          <span class="info-label">From</span>
+          <span class="info-value" th:text="${contact.name}">John Doe</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email</span>
+          <span class="info-value">
+            <a th:href="'mailto:' + ${contact.email}" th:text="${contact.email}">john@example.com</a>
+          </span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Subject</span>
+          <span class="info-value" th:text="${contact.subject}">Order Inquiry</span>
+        </div>
+      </div>
+
+      <!-- Message -->
+      <h2 class="section-title">Message</h2>
+      <div class="message-box">
+        <p th:text="${contact.message}">Message content goes here...</p>
+      </div>
+
+      <!-- Reply hint -->
+      <div class="reply-hint">
+        <p>
+          💡 Reply directly to this email to respond to
+          <strong th:text="${contact.name}">John Doe</strong>
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>WiseCart — Customer Contact Form</p>
+      <p>This email was sent from the WiseCart contact page.</p>
+      <div class="copyright">
+        <p>© 2026 WiseCart. All rights reserved.</p>
+        <p>This is an automated notification, please do not reply directly to this email.</p>
+      </div>
+    </div>
+
+  </div>
+</body>
+
+</html>
