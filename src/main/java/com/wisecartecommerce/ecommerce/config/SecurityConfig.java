@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -33,7 +34,7 @@ public class SecurityConfig {
                                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                                 .csrf(csrf -> csrf.disable())
                                 .authorizeHttpRequests(auth -> auth
-                                                // Auth endpoints (with and without /api prefix)
+                                                // Auth endpoints
                                                 .requestMatchers(
                                                                 "/auth/register", "/api/auth/register",
                                                                 "/auth/login", "/api/auth/login",
@@ -43,23 +44,22 @@ public class SecurityConfig {
                                                                 "/auth/verify-email", "/api/auth/verify-email")
                                                 .permitAll()
 
-                                                // Category public endpoints (with and without /api prefix)
+                                                // Category public endpoints
                                                 .requestMatchers(
                                                                 "/categories/public/**", "/api/categories/public/**",
                                                                 "/categories", "/api/categories",
                                                                 "/categories/tree", "/api/categories/tree",
                                                                 "/categories/{id}", "/api/categories/{id}",
                                                                 "/categories/{id}/products/count",
-                                                                "/api/categories/{id}/products/count"
-
-                                                ).permitAll()
+                                                                "/api/categories/{id}/products/count")
+                                                .permitAll()
 
                                                 .requestMatchers(
                                                                 "/customer/shipping/estimate/**",
                                                                 "/api/customer/shipping/estimate/**")
                                                 .permitAll()
 
-                                                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                                .requestMatchers(HttpMethod.GET,
                                                                 "/customer/orders/*/track",
                                                                 "/api/customer/orders/*/track")
                                                 .permitAll()
@@ -69,8 +69,8 @@ public class SecurityConfig {
                                                                 "/products/**", "/api/products/**")
                                                 .permitAll()
 
-                                                // Reviews public endpoints (read-only)
-                                                .requestMatchers(
+                                                // Reviews — GET is public, write operations require authentication
+                                                .requestMatchers(HttpMethod.GET,
                                                                 "/reviews/**", "/api/reviews/**")
                                                 .permitAll()
 

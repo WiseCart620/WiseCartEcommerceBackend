@@ -17,9 +17,12 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager manager = new CaffeineCacheManager(
+            // existing product caches
             "products", "activeProducts", "featuredProducts",
             "newArrivals", "topSelling", "categories",
-            "categoryTree", "homepageSections"
+            "categoryTree", "homepageSections",
+            // review caches (TTLs handled per-cache via individual builders below)
+            "reviews", "reviewSummary", "recentReviews"
         );
         manager.setCaffeine(Caffeine.newBuilder()
             .expireAfterWrite(10, TimeUnit.MINUTES)
