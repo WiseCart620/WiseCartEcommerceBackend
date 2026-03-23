@@ -3,6 +3,7 @@ package com.wisecartecommerce.ecommerce.service.impl;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -56,7 +57,35 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariationRepository productVariationRepository;
     private final ProductImageRepository productImageRepository;
 
+    // ── Label CSV helpers ─────────────────────────────────────────────────────
+
+    /**
+     * Convert a List<String> of badge labels to a compact CSV string for DB storage.
+     * e.g. ["New", "Hot"] → "New,Hot"
+     */
+    private String labelsToString(List<String> labels) {
+        if (labels == null || labels.isEmpty()) return null;
+        return labels.stream()
+                .filter(l -> l != null && !l.isBlank())
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.joining(","));
+    }
+
+    /**
+     * Parse a CSV label string from the DB back to a List<String>.
+     * e.g. "New,Hot" → ["New", "Hot"]
+     */
+    private List<String> labelsFromString(String csv) {
+        if (csv == null || csv.isBlank()) return Collections.emptyList();
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(Collectors.toList());
+    }
+
     // ── Write methods with cache eviction ─────────────────────────────────────
+
     @Override
     @Transactional
     @CacheEvict(value = {"products", "activeProducts", "featuredProducts", "newArrivals", "topSelling"}, allEntries = true)
@@ -67,7 +96,7 @@ public class ProductServiceImpl implements ProductService {
 
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                "Category not found with id: " + request.getCategoryId()));
+                        "Category not found with id: " + request.getCategoryId()));
 
         Product product = Product.builder()
                 .name(request.getName())
@@ -78,7 +107,7 @@ public class ProductServiceImpl implements ProductService {
                 .sku(request.getSku())
                 .upc(request.getUpc())
                 .discount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO)
-                .label(request.getLabel())
+                .label(labelsToString(request.getLabels()))
                 .active(true)
                 .lazadaUrl(request.getLazadaUrl())
                 .shopeeUrl(request.getShopeeUrl())
@@ -99,7 +128,7 @@ public class ProductServiceImpl implements ProductService {
                         .imageUrl(imageUrl)
                         .primary(true)
                         .displayOrder(0)
-                        .imageType(ProductImage.ImageType.GALLERY) // Set image type
+                        .imageType(ProductImage.ImageType.GALLERY)
                         .build();
                 savedProduct.addImage(productImage);
                 savedProduct.setImageUrl(imageUrl);
@@ -109,6 +138,7 @@ public class ProductServiceImpl implements ProductService {
                 log.error("Failed to upload image for product: {}", savedProduct.getId(), e);
             }
         }
+
         if (request.getVariations() != null && !request.getVariations().isEmpty()) {
             for (ProductVariationRequest varReq : request.getVariations()) {
                 validateVariationUniqueness(varReq.getSku(), varReq.getUpc(), null);
@@ -117,11 +147,13 @@ public class ProductServiceImpl implements ProductService {
             }
             savedProduct = productRepository.save(savedProduct);
         }
+
         log.info("Product created: {} (ID: {})", savedProduct.getName(), savedProduct.getId());
         return mapToResponse(savedProduct);
     }
 
     // ── Description Image Methods ─────────────────────────────────────────────
+
     @Override
     @Transactional
     public List<DescriptionImageResponse> uploadDescriptionImages(Long productId, List<MultipartFile> files) {
@@ -131,17 +163,11 @@ public class ProductServiceImpl implements ProductService {
         List<DescriptionImageResponse> responses = new ArrayList<>();
 
         for (MultipartFile file : files) {
-            // Validate file
             validateImageFile(file);
-
             try {
-                // Generate unique filename
                 String fileName = generateFileName(file);
-
-                // Upload file using FileStorageService
                 String fileUrl = fileStorageService.uploadProductImage(file, productId);
 
-                // Create and save ProductImage entity with DESCRIPTION type
                 ProductImage productImage = ProductImage.builder()
                         .product(product)
                         .imageUrl(fileUrl)
@@ -161,7 +187,6 @@ public class ProductServiceImpl implements ProductService {
                         .build());
 
                 log.info("Description image uploaded for product ID: {}", productId);
-
             } catch (Exception e) {
                 log.error("Failed to upload description image for product {}: {}", productId, e.getMessage());
                 throw new CustomException("Failed to upload image: " + file.getOriginalFilename());
@@ -177,22 +202,16 @@ public class ProductServiceImpl implements ProductService {
         ProductImage image = productImageRepository.findById(imageId)
                 .orElseThrow(() -> new ResourceNotFoundException("Image not found with id: " + imageId));
 
-        // Verify the image belongs to the product and is a description image
         if (!image.getProduct().getId().equals(productId)) {
             throw new CustomException("Image does not belong to product id: " + productId);
         }
-
         if (image.getImageType() != ProductImage.ImageType.DESCRIPTION) {
             throw new CustomException("Image is not a description image");
         }
 
         try {
-            // Delete from storage
             fileStorageService.deleteFile(image.getImageUrl());
-
-            // Delete from database
             productImageRepository.delete(image);
-
             log.info("Description image deleted: {} for product ID: {}", imageId, productId);
         } catch (Exception e) {
             log.error("Failed to delete description image: {}", imageId, e);
@@ -203,28 +222,18 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional
     public void processDescriptionImages(Long productId, String description) {
-        // This method can be called when saving a product to clean up
-        // unused description images or to process any special formatting
-        if (description == null || description.isEmpty()) {
-            return;
-        }
+        if (description == null || description.isEmpty()) return;
 
-        // Get all description images for the product
         List<ProductImage> descriptionImages = productImageRepository
                 .findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
 
-        // Extract image URLs from the description HTML
         List<String> usedImageUrls = new ArrayList<>();
-
-        // Simple regex to find image src attributes in HTML
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("src=\"([^\"]+)\"");
         java.util.regex.Matcher matcher = pattern.matcher(description);
-
         while (matcher.find()) {
             usedImageUrls.add(matcher.group(1));
         }
 
-        // Find and delete unused images
         for (ProductImage image : descriptionImages) {
             if (!usedImageUrls.contains(image.getImageUrl())) {
                 try {
@@ -238,23 +247,18 @@ public class ProductServiceImpl implements ProductService {
         }
     }
 
-    // ── Helper Methods for Image Validation ───────────────────────────────────
+    // ── Image validation helpers ───────────────────────────────────────────────
+
     private void validateImageFile(MultipartFile file) {
-        if (file.isEmpty()) {
-            throw new CustomException("File is empty");
-        }
+        if (file.isEmpty()) throw new CustomException("File is empty");
 
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("image/")) {
             throw new CustomException("Only image files are allowed. Received: " + contentType);
         }
-
-        // Max file size (5MB)
         if (file.getSize() > 5 * 1024 * 1024) {
             throw new CustomException("File size must be less than 5MB");
         }
-
-        // Check allowed image types
         List<String> allowedTypes = List.of("image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp");
         if (!allowedTypes.contains(contentType)) {
             throw new CustomException("Only JPG, PNG, GIF, and WEBP images are allowed");
@@ -264,15 +268,14 @@ public class ProductServiceImpl implements ProductService {
     private String generateFileName(MultipartFile file) {
         String originalFilename = file.getOriginalFilename();
         String extension = "";
-
         if (originalFilename != null && originalFilename.contains(".")) {
             extension = originalFilename.substring(originalFilename.lastIndexOf("."));
         }
-
         return UUID.randomUUID().toString() + extension;
     }
 
-    // ── Existing Methods ─────────────────────────────────────────────────────
+    // ── Update / Delete ───────────────────────────────────────────────────────
+
     @Override
     @Transactional
     @CacheEvict(value = {"products", "activeProducts", "featuredProducts", "newArrivals", "topSelling"}, allEntries = true)
@@ -288,7 +291,7 @@ public class ProductServiceImpl implements ProductService {
 
         Category category = categoryRepository.findById(request.getCategoryId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                "Category not found with id: " + request.getCategoryId()));
+                        "Category not found with id: " + request.getCategoryId()));
 
         product.setName(request.getName());
         product.setDescription(request.getDescription());
@@ -298,22 +301,22 @@ public class ProductServiceImpl implements ProductService {
         product.setSku(request.getSku());
         product.setUpc(request.getUpc());
         product.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
-        product.setLabel(request.getLabel());
-        if (request.getLazadaUrl() != null) {
-            product.setLazadaUrl(request.getLazadaUrl());
-        }
-        if (request.getShopeeUrl() != null) {
-            product.setShopeeUrl(request.getShopeeUrl());
-        }
+        product.setLabel(labelsToString(request.getLabels()));
+
+        if (request.getLazadaUrl() != null) product.setLazadaUrl(request.getLazadaUrl());
+        if (request.getShopeeUrl() != null) product.setShopeeUrl(request.getShopeeUrl());
+
         if (request.getRecommendationCategoryId() != null) {
             product.setRecommendationCategory(
                     categoryRepository.findById(request.getRecommendationCategoryId()).orElse(null));
         } else {
             product.setRecommendationCategory(null);
         }
+
         if (request.getRecommendedProductIds() != null) {
             product.setRecommendedProducts(productRepository.findAllById(request.getRecommendedProductIds()));
         }
+
         if (request.getVariations() != null) {
             Map<Long, String> existingImagesByID = product.getVariations().stream()
                     .filter(v -> v.getId() != null && v.getImageUrl() != null)
@@ -335,6 +338,7 @@ public class ProductServiceImpl implements ProductService {
                 product.addVariation(variation);
             }
         }
+
         Product updatedProduct = productRepository.save(product);
         log.info("Product updated: {} (ID: {})", updatedProduct.getName(), updatedProduct.getId());
         return mapToResponse(updatedProduct);
@@ -347,7 +351,6 @@ public class ProductServiceImpl implements ProductService {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found with id: " + id));
 
-        // Delete all images (both gallery and description)
         product.getImages().forEach(image -> {
             try {
                 fileStorageService.deleteFile(image.getImageUrl());
@@ -366,9 +369,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductResponse updateStock(Long id, Integer quantity) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        if (quantity < 0) {
-            throw new CustomException("Stock quantity cannot be negative");
-        }
+        if (quantity < 0) throw new CustomException("Stock quantity cannot be negative");
         product.setStockQuantity(quantity);
         Product updatedProduct = productRepository.save(product);
         log.info("Stock updated for product: {} (ID: {}) to {}", product.getName(), id, quantity);
@@ -391,9 +392,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
     public ProductResponse updatePrice(Long id, BigDecimal price) {
-        if (price.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new CustomException("Price must be greater than 0");
-        }
+        if (price.compareTo(BigDecimal.ZERO) <= 0) throw new CustomException("Price must be greater than 0");
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
         product.setPrice(price);
@@ -428,6 +427,7 @@ public class ProductServiceImpl implements ProductService {
                     .displayOrder(displayOrder)
                     .imageType(ProductImage.ImageType.GALLERY)
                     .build();
+
             if (isPrimary) {
                 product.getImages().stream()
                         .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
@@ -438,9 +438,8 @@ public class ProductServiceImpl implements ProductService {
                 productImage.setPrimary(true);
                 product.setImageUrl(imageUrl);
             }
-            if (isPrimary) {
-                product.setImageUrl(imageUrl);
-            }
+            if (isPrimary) product.setImageUrl(imageUrl);
+
             Product savedProduct = productRepository.save(product);
             log.info("Image added to product: {} (ID: {})", product.getName(), productId);
             return mapToResponse(savedProduct);
@@ -469,7 +468,6 @@ public class ProductServiceImpl implements ProductService {
 
         product.getImages().remove(imageToDelete);
 
-        // Update primary image if needed
         if (imageToDelete.isPrimary() && !product.getGalleryImages().isEmpty()) {
             ProductImage newPrimary = product.getGalleryImages().get(0);
             newPrimary.setPrimary(true);
@@ -486,18 +484,14 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @CacheEvict(value = {"products", "activeProducts", "featuredProducts", "newArrivals", "topSelling"}, allEntries = true)
     public List<ProductResponse.ProductImageResponse> addProductImages(Long productId, List<MultipartFile> files) {
-        if (files == null || files.isEmpty()) {
-            throw new CustomException("No files provided");
-        }
-        if (files.size() > 10) {
-            throw new CustomException("Maximum 10 images allowed at once");
-        }
+        if (files == null || files.isEmpty()) throw new CustomException("No files provided");
+        if (files.size() > 10) throw new CustomException("Maximum 10 images allowed at once");
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
 
         int nextOrder = product.getGalleryImages().stream()
-                .mapToInt(ProductImage::getDisplayOrder)
-                .max().orElse(-1) + 1;
+                .mapToInt(ProductImage::getDisplayOrder).max().orElse(-1) + 1;
 
         boolean hasNoPrimary = product.getGalleryImages().isEmpty();
         List<ProductResponse.ProductImageResponse> results = new ArrayList<>();
@@ -514,9 +508,8 @@ public class ProductServiceImpl implements ProductService {
                         .imageType(ProductImage.ImageType.GALLERY)
                         .build();
                 product.addImage(productImage);
-                if (isPrimary) {
-                    product.setImageUrl(imageUrl);
-                }
+                if (isPrimary) product.setImageUrl(imageUrl);
+
                 results.add(ProductResponse.ProductImageResponse.builder()
                         .id(productImage.getId())
                         .imageUrl(imageUrl)
@@ -532,7 +525,8 @@ public class ProductServiceImpl implements ProductService {
         return results;
     }
 
-    // Variation write methods
+    // ── Variation write methods ───────────────────────────────────────────────
+
     @Override
     @Transactional
     @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
@@ -586,9 +580,7 @@ public class ProductServiceImpl implements ProductService {
     public ProductVariationResponse uploadVariationImage(Long productId, Long variationId, MultipartFile file) {
         ProductVariation variation = getVariationOrThrow(productId, variationId);
         try {
-            if (variation.getImageUrl() != null) {
-                fileStorageService.deleteFile(variation.getImageUrl());
-            }
+            if (variation.getImageUrl() != null) fileStorageService.deleteFile(variation.getImageUrl());
             String imageUrl = fileStorageService.uploadProductImage(file, productId);
             variation.setImageUrl(imageUrl);
             ProductVariation saved = productVariationRepository.save(variation);
@@ -603,9 +595,7 @@ public class ProductServiceImpl implements ProductService {
     @Transactional
     @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
     public ProductVariationResponse updateVariationStock(Long productId, Long variationId, Integer quantity) {
-        if (quantity < 0) {
-            throw new CustomException("Stock quantity cannot be negative");
-        }
+        if (quantity < 0) throw new CustomException("Stock quantity cannot be negative");
         ProductVariation variation = getVariationOrThrow(productId, variationId);
         variation.setStockQuantity(quantity);
         ProductVariation saved = productVariationRepository.save(variation);
@@ -614,6 +604,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     // ── Read methods with caching ─────────────────────────────────────────────
+
     @Override
     @Cacheable(value = "products", key = "#id")
     @Transactional(readOnly = true)
@@ -698,9 +689,7 @@ public class ProductServiceImpl implements ProductService {
     public List<ProductResponse> getRelatedProducts(Long productId, int limit) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
-        if (product.getCategory() == null) {
-            return Collections.emptyList();
-        }
+        if (product.getCategory() == null) return Collections.emptyList();
         Pageable pageable = PageRequest.of(0, limit);
         List<Product> relatedProducts = productRepository.findRelatedProducts(
                 product.getCategory().getId(), productId, pageable);
@@ -710,9 +699,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<String> getSearchSuggestions(String query, int limit) {
-        if (query == null || query.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
+        if (query == null || query.trim().isEmpty()) return Collections.emptyList();
         Pageable pageable = PageRequest.of(0, limit);
         return productRepository.findProductNameSuggestions(query.trim(), pageable);
     }
@@ -775,9 +762,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<ProductResponse> searchProducts(String query, int limit) {
-        if (query == null || query.trim().isEmpty()) {
-            return Collections.emptyList();
-        }
+        if (query == null || query.trim().isEmpty()) return Collections.emptyList();
         Pageable pageable = PageRequest.of(0, limit);
         return productRepository.searchProducts(query.trim(), pageable).stream()
                 .map(this::mapToResponse).collect(Collectors.toList());
@@ -794,6 +779,7 @@ public class ProductServiceImpl implements ProductService {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────────
+
     private ProductVariation getVariationOrThrow(Long productId, Long variationId) {
         ProductVariation variation = productVariationRepository.findById(variationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Variation not found with id: " + variationId));
@@ -879,7 +865,6 @@ public class ProductServiceImpl implements ProductService {
     private ProductResponse mapToResponse(Product product) {
         ProductResponse.ProductImageResponse[] primaryImage = {null};
 
-        // Get gallery images only
         List<ProductResponse.ProductImageResponse> images = product.getGalleryImages().stream()
                 .map(img -> {
                     ProductResponse.ProductImageResponse imageResponse = ProductResponse.ProductImageResponse.builder()
@@ -888,9 +873,7 @@ public class ProductServiceImpl implements ProductService {
                             .isPrimary(img.isPrimary())
                             .displayOrder(img.getDisplayOrder())
                             .build();
-                    if (img.isPrimary()) {
-                        primaryImage[0] = imageResponse;
-                    }
+                    if (img.isPrimary()) primaryImage[0] = imageResponse;
                     return imageResponse;
                 }).collect(Collectors.toList());
 
@@ -951,7 +934,7 @@ public class ProductServiceImpl implements ProductService {
                 .variations(variationResponses)
                 .active(product.isActive())
                 .featured(product.isFeatured())
-                .label(product.getLabel())
+                .labels(labelsFromString(product.getLabel()))
                 .reviewSummary(reviewSummary)
                 .createdAt(product.getCreatedAt())
                 .updatedAt(product.getUpdatedAt())
@@ -973,9 +956,7 @@ public class ProductServiceImpl implements ProductService {
                     if (spec != null && orig.compareTo(BigDecimal.ZERO) > 0) {
                         pct = orig.subtract(eff).multiply(BigDecimal.valueOf(100))
                                 .divide(orig, 0, RoundingMode.HALF_UP).intValue();
-                        if (pct < 0) {
-                            pct = 0;
-                        }
+                        if (pct < 0) pct = 0;
                     }
                     return ProductAddOnResponse.builder()
                             .id(a.getId())
@@ -986,8 +967,8 @@ public class ProductServiceImpl implements ProductService {
                             .specialPrice(spec)
                             .effectivePrice(eff)
                             .discountPercent(pct)
-                            .inStock(hasVars ? activeVars.stream()
-                                    .anyMatch(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
+                            .inStock(hasVars
+                                    ? activeVars.stream().anyMatch(v -> v.getStockQuantity() != null && v.getStockQuantity() > 0)
                                     : ap.isInStock())
                             .displayOrder(a.getDisplayOrder())
                             .hasVariations(hasVars)
@@ -1012,7 +993,7 @@ public class ProductServiceImpl implements ProductService {
                 .discountedPrice(p.getDiscountedPrice())
                 .inStock(p.isInStock())
                 .rating(p.getRating())
-                .label(p.getLabel())
+                .labels(labelsFromString(p.getLabel()))
                 .build();
     }
 
@@ -1027,30 +1008,24 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public List<DescriptionImageResponse> getDescriptionImageResponses(Long productId) {
-        // Verify product exists
         if (!productRepository.existsById(productId)) {
             throw new ResourceNotFoundException("Product not found with id: " + productId);
         }
-
-        // Get description images from repository
         List<ProductImage> descriptionImages = productImageRepository
                 .findByProductIdAndImageType(productId, ProductImage.ImageType.DESCRIPTION);
 
-        // Convert to response DTOs
         return descriptionImages.stream()
                 .map(image -> DescriptionImageResponse.builder()
-                .id(image.getId())
-                .imageUrl(image.getImageUrl())
-                .altText(image.getAltText())
-                .fileName(extractFileName(image.getImageUrl()))
-                .build())
+                        .id(image.getId())
+                        .imageUrl(image.getImageUrl())
+                        .altText(image.getAltText())
+                        .fileName(extractFileName(image.getImageUrl()))
+                        .build())
                 .collect(Collectors.toList());
     }
 
     private String extractFileName(String imageUrl) {
-        if (imageUrl == null || imageUrl.isEmpty()) {
-            return null;
-        }
+        if (imageUrl == null || imageUrl.isEmpty()) return null;
         int lastSlash = imageUrl.lastIndexOf('/');
         return lastSlash >= 0 ? imageUrl.substring(lastSlash + 1) : imageUrl;
     }

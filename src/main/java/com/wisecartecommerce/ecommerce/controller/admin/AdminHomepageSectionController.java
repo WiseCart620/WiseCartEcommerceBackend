@@ -1,21 +1,31 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
+import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.HomepageSectionRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.HomepageSectionResponse;
 import com.wisecartecommerce.ecommerce.service.HomepageSectionService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
 
 @RestController
 @RequestMapping("/admin/homepage-sections")
@@ -56,6 +66,15 @@ public class AdminHomepageSectionController {
     public ResponseEntity<ApiResponse<Void>> initializeSections() {
         homepageSectionService.initializeDefaultSections();
         return ResponseEntity.ok(ApiResponse.success("Default sections initialized", null));
+    }
+
+    @PostMapping("/{sectionKey}/banner-image")
+    @Operation(summary = "Upload section banner image")
+    public ResponseEntity<ApiResponse<String>> uploadBannerImage(
+            @PathVariable String sectionKey,
+            @RequestParam("file") MultipartFile file) {
+        String url = homepageSectionService.uploadBannerImage(sectionKey, file);
+        return ResponseEntity.ok(ApiResponse.success("Banner image uploaded", url));
     }
 
     @PostMapping

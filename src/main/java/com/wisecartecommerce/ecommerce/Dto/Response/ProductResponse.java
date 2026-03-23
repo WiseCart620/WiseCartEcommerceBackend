@@ -55,7 +55,10 @@ public class ProductResponse {
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
-    private String label;
+
+    // ── Multi-badge support ───────────────────────────────────────────────────
+    private List<String> labels;
+
     private String lazadaUrl;
     private String shopeeUrl;
     private List<ProductAddOnResponse> addOns;
@@ -108,6 +111,7 @@ public class ProductResponse {
         private BigDecimal discountedPrice;
         private boolean inStock;
         private BigDecimal rating;
-        private String label;
+        // ── Multi-badge support ───────────────────────────────────────────────
+        private List<String> labels;
     }
 }

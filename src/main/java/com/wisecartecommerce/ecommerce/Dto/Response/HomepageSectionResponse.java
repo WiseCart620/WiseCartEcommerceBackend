@@ -1,10 +1,14 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import com.wisecartecommerce.ecommerce.enums.SectionMode;
-import lombok.*;
-
 import java.time.LocalDateTime;
 import java.util.List;
+
+import com.wisecartecommerce.ecommerce.enums.SectionMode;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
@@ -30,14 +34,28 @@ public class HomepageSectionResponse {
 
     private String timerLabel;
 
-    /** Milliseconds remaining until timerEndsAt (computed, for convenience) */
+    /**
+     * Milliseconds remaining until timerEndsAt (computed, for convenience)
+     */
     private Long timerRemainingMs;
 
-    /** Populated for MANUAL and CATEGORY modes — the actual products to display */
+    /**
+     * Populated for MANUAL and CATEGORY modes — the actual products to display
+     */
     private List<ProductResponse> products;
 
-    /** IDs of manually selected products (admin use) */
+    /**
+     * IDs of manually selected products (admin use)
+     */
     private List<Long> productIds;
 
     private LocalDateTime updatedAt;
+
+    private String sectionBannerUrl;
+    private String sectionBannerLink;
+
+    private String sectionBannerTitle;
+    private String sectionBannerDescription;
+    private Integer sectionBannerOverlay;
+
 }

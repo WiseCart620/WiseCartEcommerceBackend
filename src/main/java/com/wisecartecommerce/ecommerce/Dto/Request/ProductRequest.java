@@ -64,8 +64,8 @@ public class ProductRequest {
     private BigDecimal widthCm;
     private BigDecimal heightCm;
 
-    @Size(max = 30, message = "Label must be 30 characters or less")
-    private String label;
+    @Size(max = 10, message = "Maximum 10 labels allowed")
+    private List<String> labels;
 
     private String lazadaUrl;
     private String shopeeUrl;

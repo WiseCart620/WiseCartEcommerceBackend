@@ -8,6 +8,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.HomepageSectionRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.HomepageSectionResponse;
@@ -21,6 +22,7 @@ import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
 import com.wisecartecommerce.ecommerce.repository.HomepageSectionProductRepository;
 import com.wisecartecommerce.ecommerce.repository.HomepageSectionRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
+import com.wisecartecommerce.ecommerce.service.FileStorageService;
 import com.wisecartecommerce.ecommerce.service.HomepageSectionService;
 
 import lombok.RequiredArgsConstructor;
@@ -36,13 +38,14 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     private final HomepageSectionProductRepository sectionProductRepository;
     private final ProductRepository productRepository;
     private final CategoryRepository categoryRepository;
+    private final FileStorageService fileStorageService;
 
     private static final List<String[]> DEFAULT_SECTIONS = List.of(
-            new String[] { "FEATURED", "Featured Products", "Handpicked just for you" },
-            new String[] { "HOT_DEALS", "Hot Deals", "Limited time discounts" },
-            new String[] { "NEW_ARRIVALS", "New Arrivals", "Fresh from the collection" },
-            new String[] { "BEST_SELLERS", "Best Sellers", "Most popular products" },
-            new String[] { "COMING_SOON", "Coming Soon", "Launching shortly — stay tuned" });
+            new String[]{"FEATURED", "Featured Products", "Handpicked just for you"},
+            new String[]{"HOT_DEALS", "Hot Deals", "Limited time discounts"},
+            new String[]{"NEW_ARRIVALS", "New Arrivals", "Fresh from the collection"},
+            new String[]{"BEST_SELLERS", "Best Sellers", "Most popular products"},
+            new String[]{"COMING_SOON", "Coming Soon", "Launching shortly — stay tuned"});
 
     private static final Set<String> PROTECTED_KEYS = Set.of(
             "FEATURED", "HOT_DEALS", "NEW_ARRIVALS", "BEST_SELLERS", "COMING_SOON");
@@ -79,6 +82,23 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
 
     @Override
     @CacheEvict(value = "homepageSections", allEntries = true)
+    public String uploadBannerImage(String sectionKey, MultipartFile file) {
+        HomepageSectionConfig section = sectionRepository.findBySectionKey(sectionKey)
+                .orElseThrow(() -> new ResourceNotFoundException("Section not found: " + sectionKey));
+        try {
+            String url = fileStorageService.uploadFile(file, "section-banners");
+            section.setSectionBannerUrl(url);
+            sectionRepository.save(section);
+            log.info("Uploaded banner image for section {}: {}", sectionKey, url);
+            return url;
+        } catch (java.io.IOException e) {
+            log.error("Failed to upload banner image for section {}", sectionKey, e);
+            throw new RuntimeException("Failed to upload banner image: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @CacheEvict(value = "homepageSections", allEntries = true)
     public void deleteSection(String sectionKey) {
         if (PROTECTED_KEYS.contains(sectionKey.toUpperCase())) {
             throw new IllegalArgumentException("Default sections cannot be deleted");
@@ -89,7 +109,6 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
         sectionRepository.delete(s);
         log.info("Deleted custom homepage section: {}", sectionKey);
     }
-    
 
     @Override
     @Transactional(readOnly = true)
@@ -132,6 +151,11 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
         section.setShowTimer(request.isShowTimer());
         section.setTimerEndsAt(request.getTimerEndsAt());
         section.setTimerLabel(request.getTimerLabel());
+        section.setSectionBannerUrl(request.getSectionBannerUrl());
+        section.setSectionBannerLink(request.getSectionBannerLink());
+        section.setSectionBannerTitle(request.getSectionBannerTitle());
+        section.setSectionBannerDescription(request.getSectionBannerDescription());
+        section.setSectionBannerOverlay(request.getSectionBannerOverlay() != null ? request.getSectionBannerOverlay() : 40);
 
         // Handle category mode
         if (request.getMode() == SectionMode.CATEGORY && request.getCategoryId() != null) {
@@ -187,7 +211,6 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
-
     private HomepageSectionResponse mapToResponse(HomepageSectionConfig s) {
         List<Long> productIds = s.getSectionProducts().stream()
                 .map(sp -> sp.getProduct().getId())
@@ -209,16 +232,20 @@ public class HomepageSectionServiceImpl implements HomepageSectionService {
                 .showTimer(s.isShowTimer())
                 .timerEndsAt(s.getTimerEndsAt())
                 .timerLabel(s.getTimerLabel())
+                .sectionBannerUrl(s.getSectionBannerUrl())
+                .sectionBannerLink(s.getSectionBannerLink())
+                .sectionBannerTitle(s.getSectionBannerTitle())
+                .sectionBannerDescription(s.getSectionBannerDescription())
                 .timerRemainingMs(
                         s.isShowTimer() && s.getTimerEndsAt() != null
-                                ? Math.max(0L, java.time.Duration.between(
-                                        java.time.LocalDateTime.now(java.time.ZoneOffset.UTC),
-                                        s.getTimerEndsAt()).toMillis())
-                                : null)
+                        ? Math.max(0L, java.time.Duration.between(
+                                java.time.LocalDateTime.now(java.time.ZoneOffset.UTC),
+                                s.getTimerEndsAt()).toMillis())
+                        : null)
                 .build();
     }
 
-    /** Like mapToResponse but also resolves the product list for the storefront */
+
     private HomepageSectionResponse mapToResponseWithProducts(HomepageSectionConfig s) {
         // Products are resolved by the frontend via existing product endpoints for AUTO
         // mode.

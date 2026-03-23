@@ -1,14 +1,37 @@
 package com.wisecartecommerce.ecommerce.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.*;
-import java.util.stream.Collectors;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.EqualsAndHashCode;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "products")
@@ -66,7 +89,13 @@ public class Product {
     @Builder.Default
     private Integer viewCount = 0;
 
-    @Column(length = 30)
+    /**
+     * Stores multiple badge labels as a comma-separated string,
+     * e.g. "New,Hot,Sale". Column length 500 supports ~40 badges.
+     * Run: ALTER TABLE products MODIFY COLUMN label VARCHAR(500);  (MySQL)
+     *   or ALTER TABLE products ALTER COLUMN label TYPE VARCHAR(500); (PostgreSQL)
+     */
+    @Column(length = 500)
     private String label;
 
     private BigDecimal lengthCm;
@@ -86,7 +115,9 @@ public class Product {
     private List<ProductAddOn> addOns = new ArrayList<>();
 
     @ManyToMany(fetch = FetchType.LAZY)
-    @JoinTable(name = "product_recommendations", joinColumns = @JoinColumn(name = "product_id"), inverseJoinColumns = @JoinColumn(name = "recommended_product_id"))
+    @JoinTable(name = "product_recommendations",
+            joinColumns = @JoinColumn(name = "product_id"),
+            inverseJoinColumns = @JoinColumn(name = "recommended_product_id"))
     @Builder.Default
     @com.fasterxml.jackson.annotation.JsonIgnore
     private List<Product> recommendedProducts = new ArrayList<>();
@@ -160,12 +191,11 @@ public class Product {
 
     /**
      * Returns weight in grams for Flash Express API calls.
-     * Uses variation weight if available; falls back to product weight; then 500 g
-     * default.
+     * Uses variation weight if available; falls back to product weight; then 500 g default.
      */
     public int getWeightGrams() {
         if (weightKg == null || weightKg.compareTo(BigDecimal.ZERO) <= 0) {
-            return 500; // 500 g default
+            return 500;
         }
         return weightKg.multiply(BigDecimal.valueOf(1000)).intValue();
     }
@@ -185,81 +215,45 @@ public class Product {
         variation.setProduct(this);
     }
 
-    // ── NEW: Image type filter methods ─────────────────────────────────────────
+    // ── Image type filter methods ──────────────────────────────────────────────
 
-    /**
-     * Get all description images (images embedded in product description)
-     */
     public List<ProductImage> getDescriptionImages() {
-        if (images == null) {
-            return new ArrayList<>();
-        }
+        if (images == null) return new ArrayList<>();
         return images.stream()
                 .filter(img -> img.getImageType() == ProductImage.ImageType.DESCRIPTION)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Get all gallery images (main product images)
-     */
     public List<ProductImage> getGalleryImages() {
-        if (images == null) {
-            return new ArrayList<>();
-        }
+        if (images == null) return new ArrayList<>();
         return images.stream()
                 .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
                 .sorted(Comparator.comparing(ProductImage::getDisplayOrder))
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Get the primary gallery image
-     */
     public Optional<ProductImage> getPrimaryGalleryImage() {
-        return getGalleryImages().stream()
-                .filter(ProductImage::isPrimary)
-                .findFirst();
+        return getGalleryImages().stream().filter(ProductImage::isPrimary).findFirst();
     }
 
-    /**
-     * Check if product has any gallery images
-     */
     public boolean hasGalleryImages() {
         return !getGalleryImages().isEmpty();
     }
 
-    /**
-     * Check if product has any description images
-     */
     public boolean hasDescriptionImages() {
         return !getDescriptionImages().isEmpty();
     }
 
-    /**
-     * Get count of gallery images
-     */
     public int getGalleryImagesCount() {
         return getGalleryImages().size();
     }
 
-    /**
-     * Get count of description images
-     */
     public int getDescriptionImagesCount() {
         return getDescriptionImages().size();
     }
 
-    /**
-     * Set primary gallery image
-     */
     public void setPrimaryGalleryImage(Long imageId) {
-        getGalleryImages().forEach(img -> {
-            img.setPrimary(img.getId().equals(imageId));
-        });
-        
-        // Update product's main imageUrl
-        getPrimaryGalleryImage().ifPresent(img -> 
-            this.setImageUrl(img.getImageUrl())
-        );
+        getGalleryImages().forEach(img -> img.setPrimary(img.getId().equals(imageId)));
+        getPrimaryGalleryImage().ifPresent(img -> this.setImageUrl(img.getImageUrl()));
     }
 }
