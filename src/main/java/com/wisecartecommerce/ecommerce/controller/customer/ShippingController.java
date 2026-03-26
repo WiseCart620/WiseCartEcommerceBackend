@@ -1,19 +1,24 @@
 package com.wisecartecommerce.ecommerce.controller.customer;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
 import com.wisecartecommerce.ecommerce.entity.Address;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/customer/shipping")
@@ -24,7 +29,7 @@ public class ShippingController {
     private final FlashExpressShippingService shippingService;
     private final AddressRepository addressRepository;
 
-    /** Estimate using a saved address ID (logged-in users) */
+
     @PostMapping("/estimate")
     @PreAuthorize("hasRole('CUSTOMER')")
     @SecurityRequirement(name = "bearerAuth")
@@ -41,7 +46,7 @@ public class ShippingController {
         return ResponseEntity.ok(ApiResponse.success("Shipping rate retrieved", rate));
     }
 
-    /** Estimate using raw fields — for guest checkout or checkout form before address is saved */
+
     @PostMapping("/estimate/manual")
     @Operation(summary = "Estimate shipping fee from address fields")
     public ResponseEntity<ApiResponse<FlashShippingRateResponse>> estimateManual(

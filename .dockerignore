@@ -1,0 +1,49 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.*
+*.env
+
+# IDE
+.idea
+.vscode
+*.iml
+*.ipr
+*.iws
+
+# Build artifacts
+# IMPORTANT: Do NOT exclude src/main/resources/db/migration (needed for Flyway)
+target/classes
+target/generated-sources
+target/maven-status
+target/maven-archiver
+target/surefire-reports
+target/test-classes
+target/*.original
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+*.md
+!README.md
+
+# Test files
+src/test/
+
+# Docker files
+docker-compose.yml
+docker-compose.*.yml
+Dockerfile
+
+# Scripts
+scripts/

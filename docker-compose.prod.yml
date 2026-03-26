@@ -1,0 +1,139 @@
+services:
+  certbot:
+    restart: unless-stopped
+    image: certbot/certbot
+    container_name: wisecart-ecommerce-certbot
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'"
+    networks:
+      - wisecart-ecommerce-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: wisecart-ecommerce-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./logs/nginx:/var/log/nginx
+    depends_on:
+      - app
+    networks:
+      - wisecart-ecommerce-network
+    mem_limit: 64m
+    cpus: 0.2
+
+  mysql:
+    image: mysql:8.0
+    container_name: wisecart-ecommerce-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=wisecart_ecommerce
+      - MYSQL_CHARACTER_SET_SERVER=utf8mb4
+      - MYSQL_COLLATION_SERVER=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    command: >
+      --max_connections=100
+      --innodb_buffer_pool_size=256M
+      --innodb_log_file_size=64M
+      --skip-name-resolve
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - wisecart-ecommerce-network
+    mem_limit: 512m
+    cpus: 0.5
+
+  app:
+    image: ${DOCKER_USERNAME}/wisecart-ecommerce:latest
+    container_name: wisecart-ecommerce-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      # Database
+      - DDL_AUTO=validate
+      - DB_URL=jdbc:mysql://wisecart-ecommerce-mysql:3306/wisecart_ecommerce?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&serverTimezone=UTC
+      - DB_USERNAME=root
+      - DB_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - SPRING_PROFILES_ACTIVE=prod
+
+      # JWT
+      - JWT_SECRET=${JWT_SECRET}
+
+      # Flyway
+      - SPRING_FLYWAY_ENABLED=true
+      - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
+      - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
+      - SPRING_FLYWAY_LOCATIONS=classpath:db/migration
+
+      # Admin
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+
+      # Mail
+      - EMAIL_USERNAME=${EMAIL_USERNAME}
+      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - CONTACT_RECIPIENT_EMAIL=${CONTACT_RECIPIENT_EMAIL}
+      - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME}
+      - ADMIN_LAST_NAME=${ADMIN_LAST_NAME}
+
+      # File Upload
+      - FILE_UPLOAD_DIR=/app/uploads
+
+      # Flash Express
+      - FLASH_EXPRESS_MCH_ID=${FLASH_EXPRESS_MCH_ID}
+      - FLASH_EXPRESS_SECRET_KEY=${FLASH_EXPRESS_SECRET_KEY}
+      - FLASH_EXPRESS_WAREHOUSE_NO=${FLASH_EXPRESS_WAREHOUSE_NO}
+      - FLASH_EXPRESS_SRC_PROVINCE=${FLASH_EXPRESS_SRC_PROVINCE}
+      - FLASH_EXPRESS_SRC_CITY=${FLASH_EXPRESS_SRC_CITY}
+      - FLASH_EXPRESS_SRC_POSTAL=${FLASH_EXPRESS_SRC_POSTAL}
+      - FLASH_EXPRESS_SRC_DETAIL_ADDRESS=${FLASH_EXPRESS_SRC_DETAIL_ADDRESS}
+      - FLASH_EXPRESS_SRC_NAME=${FLASH_EXPRESS_SRC_NAME}
+      - FLASH_EXPRESS_SRC_PHONE=${FLASH_EXPRESS_SRC_PHONE}
+
+      # Server
+      - SERVER_PORT=8080
+      - SERVER_ADDRESS=0.0.0.0
+
+      # Maya Payment
+      - MAYA_PUBLIC_KEY=${MAYA_PUBLIC_KEY}
+      - MAYA_SECRET_KEY=${MAYA_SECRET_KEY}
+    expose:
+      - "8080"
+    volumes:
+      - app_logs:/app/logs
+      - uploads:/app/uploads
+    mem_limit: 768m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    networks:
+      - wisecart-ecommerce-network
+
+volumes:
+  mysql_data:
+  app_logs:
+  uploads:
+
+networks:
+  wisecart-ecommerce-network:
+    external: true
+    name: wisecart_ecommerce-network

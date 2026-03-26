@@ -18,11 +18,13 @@ import com.wisecartecommerce.ecommerce.entity.ContactMessage;
 import com.wisecartecommerce.ecommerce.entity.ContactMessage.ContactStatus;
 import com.wisecartecommerce.ecommerce.entity.ContactReply;
 import com.wisecartecommerce.ecommerce.entity.ContactReply.SenderType;
+import com.wisecartecommerce.ecommerce.exception.RateLimitException;
 import com.wisecartecommerce.ecommerce.repository.ContactMessageRepository;
 import com.wisecartecommerce.ecommerce.repository.ContactReplyRepository;
 import com.wisecartecommerce.ecommerce.repository.UserRepository;
 
 import jakarta.persistence.EntityNotFoundException;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -36,10 +38,15 @@ public class ContactService {
     private final EmailService emailService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final RateLimitService rateLimitService;
+    private final HttpServletRequest httpRequest;
 
     // ─── PUBLIC ──────────────────────────────────────────────────────────────
     @Transactional
     public ContactMessageResponse submitMessage(ContactRequest request, Long userId) {
+        if (!rateLimitService.tryConsume(rateLimitService.contactBucket(getClientIp(httpRequest)))) {
+            throw new RateLimitException("Too many messages submitted. Please wait before sending again.");
+        }
         ContactMessage toSave = ContactMessage.builder()
                 .userId(userId)
                 .name(request.getName())
@@ -92,7 +99,6 @@ public class ContactService {
                 : messageRepository.findAllByOrderByCreatedAtDesc(pageable);
         return messages.map(m -> toResponse(m, false));
     }
-
 
     @Transactional
     public ContactReplyResponse adminReply(Long messageId, ContactReplyRequest request) {
@@ -191,6 +197,14 @@ public class ContactService {
                         ? m.getReplies().stream().map(this::toReplyResponse).toList()
                         : List.of())
                 .build();
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     private ContactReplyResponse toReplyResponse(ContactReply r) {

@@ -42,10 +42,7 @@ public class AdminShippingController {
     private final FlashExpressShippingService shippingService;
     private final OrderRepository orderRepository;
 
-    /**
-     * Download shipping label PDF for a given PNO. GET
-     * /admin/shipping/label/{pno}
-     */
+
     @GetMapping("/label/{pno}")
     @Operation(summary = "Download shipping label PDF for a Flash PNO")
     public ResponseEntity<byte[]> downloadLabel(@PathVariable String pno) {
@@ -61,12 +58,7 @@ public class AdminShippingController {
                 .body(pdfBytes);
     }
 
-    /**
-     * Notify Flash Express courier to come pick up parcels. POST
-     * /admin/shipping/notify-courier
-     *
-     * Body: { "estimateParcelNumber": 5, "remark": "ASAP" }
-     */
+
     @PostMapping("/notify-courier")
     @Operation(summary = "Notify Flash Express courier for pickup")
     public ResponseEntity<ApiResponse<FlashNotifyResponse>> notifyCourier(
@@ -79,9 +71,7 @@ public class AdminShippingController {
         return ResponseEntity.ok(ApiResponse.success("Courier notified successfully", response));
     }
 
-    /**
-     * Track a Flash Express order by PNO. GET /admin/shipping/track/{pno}
-     */
+
     @GetMapping("/track/{pno}")
     @Operation(summary = "Track a Flash Express parcel")
     public ResponseEntity<ApiResponse<FlashTrackingResponse>> trackOrder(@PathVariable String pno) {
@@ -100,24 +90,19 @@ public class AdminShippingController {
     @PostMapping("/cancel/{pno}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cancelByPno(@PathVariable String pno) {
 
-        // 1. Cancel on Flash Express
-        shippingService.cancelOrder(pno); // throws CustomException on failure
+        shippingService.cancelOrder(pno);
 
-        // 2. Find the matching local order (by trackingNumber OR orderNumber)
         Map<String, Object> result = new HashMap<>();
         result.put("pno", pno);
         result.put("flashCancelled", true);
 
         Optional<Order> orderOpt = orderRepository.findByTrackingNumber(pno);
         if (orderOpt.isEmpty()) {
-            // fallback: orderNumber was set to PNO by assignFlashOrderNumber
             orderOpt = orderRepository.findByOrderNumber(pno);
         }
 
         if (orderOpt.isPresent()) {
             Order order = orderOpt.get();
-
-            // Only cancel if not already in a terminal state
             if (order.getStatus() != OrderStatus.CANCELLED
                     && order.getStatus() != OrderStatus.DELIVERED
                     && order.getStatus() != OrderStatus.RETURNED) {
@@ -125,8 +110,6 @@ public class AdminShippingController {
                 OrderStatus prev = order.getStatus();
                 order.setStatus(OrderStatus.CANCELLED);
                 order.setCancelledAt(java.time.LocalDateTime.now());
-
-                // Restore stock for each item
                 for (var item : order.getItems()) {
                     var product = item.getProduct();
                     product.setStockQuantity(product.getStockQuantity() + item.getQuantity());

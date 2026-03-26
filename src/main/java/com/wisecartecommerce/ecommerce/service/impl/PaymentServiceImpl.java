@@ -1,7 +1,13 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,20 +18,19 @@ import com.wisecartecommerce.ecommerce.entity.Payment;
 import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
+import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.service.EmailService;
+import com.wisecartecommerce.ecommerce.service.MayaService;
+import com.wisecartecommerce.ecommerce.service.NotificationService;
 import com.wisecartecommerce.ecommerce.service.PaymentResponse;
 import com.wisecartecommerce.ecommerce.service.PaymentService;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 import com.wisecartecommerce.ecommerce.util.PaymentStatus;
 
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -35,11 +40,13 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final EmailService emailService;
+    private final MayaService mayaService;
+    private final CartRepository cartRepository;
+    private final NotificationService notificationService;
 
     // ══════════════════════════════════════════════════════════════════════════
     // Process payment
     // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     @Transactional
     public PaymentResponse processPayment(PaymentRequest request) {
@@ -47,14 +54,17 @@ public class PaymentServiceImpl implements PaymentService {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        if (!order.getUser().getId().equals(user.getId()))
+        if (!order.getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only pay for your own orders");
+        }
 
-        if (order.getStatus() != OrderStatus.PENDING)
+        if (order.getStatus() != OrderStatus.PENDING) {
             throw new CustomException("Order cannot be paid in current status: " + order.getStatus());
+        }
 
-        if (order.getPaymentStatus() == PaymentStatus.COMPLETED)
+        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
             throw new CustomException("Order has already been paid");
+        }
 
         // ── COD — no payment processing needed ───────────────────────────────
         // Flash Express will collect the cash on delivery.
@@ -65,11 +75,13 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         // ── Online payment ────────────────────────────────────────────────────
-        if (request.getAmount() == null)
+        if (request.getAmount() == null) {
             request.setAmount(order.getFinalAmount());
+        }
 
-        if (request.getAmount().compareTo(order.getFinalAmount()) != 0)
+        if (request.getAmount().compareTo(order.getFinalAmount()) != 0) {
             throw new CustomException("Payment amount must match order total: " + order.getFinalAmount());
+        }
 
         PaymentStatus paymentStatus;
         String transactionId = generateTransactionId();
@@ -115,8 +127,9 @@ public class PaymentServiceImpl implements PaymentService {
         order.getPayments().add(savedPayment);
         orderRepository.save(order);
 
-        if (paymentStatus == PaymentStatus.COMPLETED)
+        if (paymentStatus == PaymentStatus.COMPLETED) {
             emailService.sendOrderConfirmationEmail(order);
+        }
 
         log.info("Payment processed for order {}: {} - {}",
                 order.getOrderNumber(), paymentStatus, transactionId);
@@ -127,13 +140,12 @@ public class PaymentServiceImpl implements PaymentService {
     // ══════════════════════════════════════════════════════════════════════════
     // COD payment handler
     // ══════════════════════════════════════════════════════════════════════════
-
     /**
-     * COD orders don't require upfront payment.
-     * Flash Express will collect cash when the courier delivers the parcel.
-     * We create a PENDING payment record and move the order to PROCESSING
-     * so admin can pack and ship it right away.
-     * Payment status is set to COMPLETED by the Flash webhook on delivery (state 5).
+     * COD orders don't require upfront payment. Flash Express will collect cash
+     * when the courier delivers the parcel. We create a PENDING payment record
+     * and move the order to PROCESSING so admin can pack and ship it right
+     * away. Payment status is set to COMPLETED by the Flash webhook on delivery
+     * (state 5).
      */
     private PaymentResponse processCodPayment(Order order, User user) {
         String transactionId = generateTransactionId();
@@ -142,7 +154,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .order(order)
                 .transactionId(transactionId)
                 .amount(order.getFinalAmount())
-                .status(PaymentStatus.PENDING)          // cash not collected yet
+                .status(PaymentStatus.PENDING) // cash not collected yet
                 .paymentMethod("COD")
                 .paymentGateway("CashOnDelivery")
                 .payerEmail(user.getEmail())
@@ -189,7 +201,6 @@ public class PaymentServiceImpl implements PaymentService {
     // ══════════════════════════════════════════════════════════════════════════
     // Read operations
     // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     @Transactional(readOnly = true)
     public PaymentResponse getPaymentById(Long paymentId) {
@@ -197,8 +208,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
 
         User user = getCurrentUser();
-        if (!payment.getOrder().getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN"))
+        if (!payment.getOrder().getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN")) {
             throw new CustomException("You can only view your own payments");
+        }
 
         return mapToPaymentResponse(payment);
     }
@@ -210,8 +222,9 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
         User user = getCurrentUser();
-        if (!order.getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN"))
+        if (!order.getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN")) {
             throw new CustomException("You can only view your own payments");
+        }
 
         // For COD orders return the pending payment record
         Payment payment = isCod(order.getPaymentMethod())
@@ -230,11 +243,13 @@ public class PaymentServiceImpl implements PaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
 
         User user = getCurrentUser();
-        if (!payment.getOrder().getUser().getId().equals(user.getId()))
+        if (!payment.getOrder().getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only request refund for your own payments");
+        }
 
-        if (payment.getStatus() != PaymentStatus.COMPLETED)
+        if (payment.getStatus() != PaymentStatus.COMPLETED) {
             throw new CustomException("Only completed payments can be refunded");
+        }
 
         // COD refunds: customer has already paid cash to courier.
         // Flash Express handles the physical cash return separately.
@@ -243,9 +258,10 @@ public class PaymentServiceImpl implements PaymentService {
                     payment.getOrder().getOrderNumber());
         }
 
-        if (payment.getOrder().getDeliveredAt() == null ||
-                payment.getOrder().getDeliveredAt().isBefore(LocalDateTime.now().minusDays(30)))
+        if (payment.getOrder().getDeliveredAt() == null
+                || payment.getOrder().getDeliveredAt().isBefore(LocalDateTime.now().minusDays(30))) {
             throw new CustomException("Refund period (30 days) has expired");
+        }
 
         payment.setStatus(PaymentStatus.REFUNDED);
         payment.setRefundAmount(payment.getAmount());
@@ -278,7 +294,9 @@ public class PaymentServiceImpl implements PaymentService {
                 "DEBIT_CARD",
                 "PAYPAL",
                 "COD",
-                "BANK_TRANSFER");
+                "BANK_TRANSFER",
+                "MAYA"
+        );
     }
 
     @Override
@@ -329,18 +347,18 @@ public class PaymentServiceImpl implements PaymentService {
     // ══════════════════════════════════════════════════════════════════════════
     // Private helpers
     // ══════════════════════════════════════════════════════════════════════════
-
     private boolean isCod(String paymentMethod) {
-        return "COD".equalsIgnoreCase(paymentMethod) ||
-               "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
+        return "COD".equalsIgnoreCase(paymentMethod)
+                || "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
     }
 
     private PaymentStatus processPaymentWithGateway(PaymentRequest request, String transactionId) {
         log.info("Processing {} payment of {} for transaction {}",
                 request.getPaymentMethod(), request.getAmount(), transactionId);
 
-        if (request.getCardNumber() != null && request.getCardNumber().endsWith("9999"))
+        if (request.getCardNumber() != null && request.getCardNumber().endsWith("9999")) {
             throw new RuntimeException("Payment declined by bank");
+        }
 
         return PaymentStatus.COMPLETED;
     }
@@ -351,20 +369,37 @@ public class PaymentServiceImpl implements PaymentService {
 
     private String getPaymentGateway(String paymentMethod) {
         return switch (paymentMethod.toUpperCase()) {
-            case "CREDIT_CARD", "DEBIT_CARD" -> "Stripe";
-            case "PAYPAL"                     -> "PayPal";
-            case "COD", "CASH_ON_DELIVERY"    -> "CashOnDelivery";
-            case "BANK_TRANSFER"              -> "BankTransfer";
-            default                           -> "Unknown";
+            case "CREDIT_CARD", "DEBIT_CARD" ->
+                "Stripe";
+            case "PAYPAL" ->
+                "PayPal";
+            case "COD", "CASH_ON_DELIVERY" ->
+                "CashOnDelivery";
+            case "BANK_TRANSFER" ->
+                "BankTransfer";
+            case "MAYA" ->
+                "Maya";
+            default ->
+                "Unknown";
         };
     }
 
     private String detectCardBrand(String cardNumber) {
-        if (cardNumber == null) return null;
-        if (cardNumber.startsWith("4")) return "Visa";
-        if (cardNumber.startsWith("5")) return "MasterCard";
-        if (cardNumber.startsWith("3")) return "American Express";
-        if (cardNumber.startsWith("6")) return "Discover";
+        if (cardNumber == null) {
+            return null;
+        }
+        if (cardNumber.startsWith("4")) {
+            return "Visa";
+        }
+        if (cardNumber.startsWith("5")) {
+            return "MasterCard";
+        }
+        if (cardNumber.startsWith("3")) {
+            return "American Express";
+        }
+        if (cardNumber.startsWith("6")) {
+            return "Discover";
+        }
         return "Unknown";
     }
 
@@ -394,5 +429,136 @@ public class PaymentServiceImpl implements PaymentService {
                 .completedAt(payment.getCompletedAt())
                 .failedAt(payment.getFailedAt())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public String createMayaCheckout(Long orderId) {
+        User user = getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only pay for your own orders");
+        }
+
+        if (order.getStatus() != OrderStatus.PENDING) {
+            throw new CustomException("Order cannot be paid in its current status");
+        }
+
+        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            throw new CustomException("Order has already been paid");
+        }
+
+        try {
+            String checkoutUrl = mayaService.createCheckout(order);
+            String transactionId = generateTransactionId();
+            Payment payment = Payment.builder()
+                    .order(order)
+                    .transactionId(transactionId)
+                    .amount(order.getFinalAmount())
+                    .status(PaymentStatus.PENDING)
+                    .paymentMethod("MAYA")
+                    .paymentGateway("Maya")
+                    .payerEmail(user.getEmail())
+                    .payerName(user.getFirstName() + " " + user.getLastName())
+                    .build();
+            paymentRepository.save(payment);
+
+            log.info("Maya checkout created for order {}", order.getOrderNumber());
+            return checkoutUrl;
+
+        } catch (Exception e) {
+            log.error("Maya checkout failed for order {}: {}", order.getOrderNumber(), e.getMessage());
+
+            // Cancel the order cleanly instead of hard-deleting it
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setCancelledAt(java.time.LocalDateTime.now());
+            order.setNotes("Maya checkout failed: " + e.getMessage());
+            orderRepository.save(order);
+
+            throw new RuntimeException("Maya checkout failed: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public void handleMayaWebhook(Map<String, Object> payload) {
+        String status = (String) payload.get("status");
+        String referenceNumber = (String) payload.get("requestReferenceNumber");
+
+        log.info("Maya webhook received: status={} ref={}", status, referenceNumber);
+
+        Order order = null;
+        if (referenceNumber != null && referenceNumber.startsWith("WC-")) {
+            try {
+                Long orderId = Long.parseLong(referenceNumber.replace("WC-", ""));
+                order = orderRepository.findById(orderId).orElse(null);
+            } catch (NumberFormatException e) {
+                log.warn("Invalid Maya reference number format: {}", referenceNumber);
+            }
+        }
+        if (order == null) {
+            log.warn("Maya webhook: order not found for ref={}", referenceNumber);
+            return;
+        }
+
+        Payment payment = paymentRepository
+                .findFirstByOrderIdOrderByCreatedAtDesc(order.getId())
+                .orElse(null);
+
+        if ("PAYMENT_SUCCESS".equals(status)) {
+            if (payment != null) {
+                payment.setStatus(PaymentStatus.COMPLETED);
+                payment.setCompletedAt(LocalDateTime.now());
+                paymentRepository.save(payment);
+            }
+            order.setPaymentStatus(PaymentStatus.COMPLETED);
+            order.setStatus(OrderStatus.PROCESSING);
+            orderRepository.save(order);
+
+            // ── Clear the cart now that payment is confirmed ──────────────────────────
+            if (order.getUser() != null) {
+                cartRepository.findByUserIdWithItems(order.getUser().getId()).ifPresent(cart -> {
+                    cart.getItems().clear();
+                    cart.setSubtotal(BigDecimal.ZERO);
+                    cart.setTotal(BigDecimal.ZERO);
+                    cart.setDiscountAmount(BigDecimal.ZERO);
+                    cart.setCouponCode(null);
+                    cart.setCouponDiscountAmount(BigDecimal.ZERO);
+                    cartRepository.save(cart);
+                    log.info("Cart cleared after Maya payment success for order {}", referenceNumber);
+                });
+            }
+
+            emailService.sendOrderConfirmationEmail(order);
+            log.info("Maya payment completed for order {}", referenceNumber);
+
+            if (order.getUser() != null) {
+                notificationService.createNotification(
+                        order.getUser(),
+                        "Order Placed Successfully",
+                        "Your order #" + order.getOrderNumber() + " has been placed and is being processed.",
+                        "ORDER",
+                        order.getId(),
+                        "ORDER");
+                notificationService.createAdminNotification(
+                        "New Order Received",
+                        "Order #" + order.getOrderNumber() + " was placed by " + order.getUser().getEmail() + ".",
+                        "ORDER",
+                        order.getId(),
+                        "ORDER");
+            }
+
+        } else if ("PAYMENT_FAILED".equals(status) || "PAYMENT_EXPIRED".equals(status)) {
+            if (payment != null) {
+                payment.setStatus(PaymentStatus.FAILED);
+                payment.setFailedAt(LocalDateTime.now());
+                paymentRepository.save(payment);
+            }
+            order.setPaymentStatus(PaymentStatus.FAILED);
+            orderRepository.save(order);
+            log.info("Maya payment failed/expired for order {}", referenceNumber);
+        }
     }
 }

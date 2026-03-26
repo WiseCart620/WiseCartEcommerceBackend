@@ -15,7 +15,6 @@ import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashOrderResult;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
-import com.wisecartecommerce.ecommerce.config.FlashExpressProperties;
 import com.wisecartecommerce.ecommerce.entity.Address;
 import com.wisecartecommerce.ecommerce.entity.FlashExpressSettings;
 import com.wisecartecommerce.ecommerce.entity.Order;
@@ -35,7 +34,6 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class FlashExpressShippingServiceImpl implements FlashExpressShippingService {
 
-    private final FlashExpressProperties props;
     private final FlashExpressClient client;
     private final FlashExpressSettingsService settingsService;
     private final com.wisecartecommerce.ecommerce.repository.OrderRepository orderRepository;
@@ -91,7 +89,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-    // ─── Create Order ─────────────────────────────────────────────────────────
     @Override
     public FlashOrderResult createOrder(Order order, Address shippingAddress,
             int weightGrams, int expressCategory) {
@@ -174,7 +171,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-    // ─── Print Label ──────────────────────────────────────────────────────────
     @Override
     public byte[] printLabel(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -199,7 +195,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         return pdfBytes;
     }
 
-    // ─── Notify Courier ───────────────────────────────────────────────────────
     @Override
     public FlashNotifyResponse notifyCourier(int estimateParcelNumber, String remark) {
         if (!isFlashExpressConfigured()) {
@@ -228,32 +223,34 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             Object codeObj = response.get("code");
             int code = codeObj instanceof Number n ? n.intValue() : 0;
 
-            if (code == 1) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> data = (Map<String, Object>) response.get("data");
-                Object ticketId = data.get("ticketPickupId");
-                Long ticketPickupId = ticketId instanceof Number n ? n.longValue() : null;
-                log.info("Flash courier notified. TicketPickupId={}", ticketPickupId);
-                return FlashNotifyResponse.builder()
-                        .ticketPickupId(ticketPickupId)
-                        .staffInfoName((String) data.get("staffInfoName"))
-                        .staffInfoPhone((String) data.get("staffInfoPhone"))
-                        .timeoutAtText((String) data.get("timeoutAtText"))
-                        .ticketMessage((String) data.get("ticketMessage"))
-                        .upCountryNote((String) data.get("upCountryNote"))
-                        .build();
-
-            } else if (code == 1010) {
-                log.info(
-                        "Flash notify: active pickup ticket already exists (code 1010) — returning existing ticket indicator");
-                return FlashNotifyResponse.builder()
-                        .ticketMessage("A pickup has already been scheduled. The courier is on the way.")
-                        .build();
-
-            } else {
-                String message = (String) response.get("message");
-                log.error("Flash notify courier failed: code={}, message={}", code, message);
-                throw new CustomException("Flash Express notify failed: " + message);
+            switch (code) {
+                case 1 -> {
+                    @SuppressWarnings("unchecked")
+                            Map<String, Object> data = (Map<String, Object>) response.get("data");
+                    Object ticketId = data.get("ticketPickupId");
+                    Long ticketPickupId = ticketId instanceof Number n ? n.longValue() : null;
+                    log.info("Flash courier notified. TicketPickupId={}", ticketPickupId);
+                    return FlashNotifyResponse.builder()
+                            .ticketPickupId(ticketPickupId)
+                            .staffInfoName((String) data.get("staffInfoName"))
+                            .staffInfoPhone((String) data.get("staffInfoPhone"))
+                            .timeoutAtText((String) data.get("timeoutAtText"))
+                            .ticketMessage((String) data.get("ticketMessage"))
+                            .upCountryNote((String) data.get("upCountryNote"))
+                            .build();
+                }
+                case 1010 -> {
+                    log.info(
+                            "Flash notify: active pickup ticket already exists (code 1010) — returning existing ticket indicator");
+                    return FlashNotifyResponse.builder()
+                            .ticketMessage("A pickup has already been scheduled. The courier is on the way.")
+                            .build();
+                }
+                default -> {
+                    String message = (String) response.get("message");
+                    log.error("Flash notify courier failed: code={}, message={}", code, message);
+                    throw new CustomException("Flash Express notify failed: " + message);
+                }
             }
 
         } catch (CustomException e) {
@@ -264,7 +261,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-    // ─── Track Order ──────────────────────────────────────────────────────────
     @Override
     public FlashTrackingResponse trackOrder(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -338,7 +334,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         }
     }
 
-    // ─── Cancel Order ─────────────────────────────────────────────────────────
     @Override
     public void cancelOrder(String pno) {
         if (!isFlashExpressConfigured()) {
@@ -384,7 +379,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         return count != null ? count.intValue() : 0;
     }
 
-    // ─── Private Helpers ──────────────────────────────────────────────────────
     private boolean isCod(String paymentMethod) {
         return "COD".equalsIgnoreCase(paymentMethod)
                 || "CASH_ON_DELIVERY".equalsIgnoreCase(paymentMethod);
@@ -534,7 +528,7 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
             return postalCode;
         }
         return postalCode.length() < 5
-                ? String.format("%05d", Integer.parseInt(postalCode.trim()))
+                ? String.format("%05d", Integer.valueOf(postalCode.trim()))
                 : postalCode;
     }
 }

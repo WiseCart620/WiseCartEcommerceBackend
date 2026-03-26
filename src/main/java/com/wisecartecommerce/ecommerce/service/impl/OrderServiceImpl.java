@@ -38,20 +38,20 @@ import com.wisecartecommerce.ecommerce.entity.Product;
 import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
+import com.wisecartecommerce.ecommerce.exception.RateLimitException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
 import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
-import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
-import com.wisecartecommerce.ecommerce.repository.UserRepository;
 import com.wisecartecommerce.ecommerce.service.EmailService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.service.NotificationService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
+import com.wisecartecommerce.ecommerce.service.RateLimitService;
 import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
 import com.wisecartecommerce.ecommerce.util.CouponValidator;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
@@ -70,8 +70,6 @@ public class OrderServiceImpl implements OrderService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final AddressRepository addressRepository;
-    private final UserRepository userRepository;
-    private final PaymentRepository paymentRepository;
     private final ProductVariationRepository productVariationRepository;
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
@@ -84,6 +82,7 @@ public class OrderServiceImpl implements OrderService {
     // ── Utilities ──────────────────────────────────────────────────────────────
     private final ShippingWeightCalculator weightCalculator;
     private final CouponValidator couponValidator;
+    private final RateLimitService rateLimitService;
 
     // ── Constants ──────────────────────────────────────────────────────────────
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("2500");
@@ -93,17 +92,19 @@ public class OrderServiceImpl implements OrderService {
     // ══════════════════════════════════════════════════════════════════════════
     // Authenticated order creation
     // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     @Transactional
     public OrderResponse createOrder(OrderRequest request) {
         User user = getCurrentUser();
-
+        if (!rateLimitService.tryConsume(rateLimitService.orderBucket(user.getId().toString()))) {
+            throw new RateLimitException("You are placing orders too quickly. Please wait.");
+        }
         Cart cart = cartRepository.findByUserIdWithItems(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cart is empty"));
 
-        if (cart.getItems().isEmpty())
+        if (cart.getItems().isEmpty()) {
             throw new CustomException("Cannot create order with an empty cart");
+        }
 
         // ── Resolve addresses ──────────────────────────────────────────────────
         Address shippingAddress = resolveAddress(
@@ -121,21 +122,25 @@ public class OrderServiceImpl implements OrderService {
             Product product = cartItem.getProduct();
             ProductVariation variation = cartItem.getVariation();
 
-            if (!product.isActive())
+            if (!product.isActive()) {
                 throw new CustomException("Product '" + product.getName() + "' is no longer available");
+            }
 
             if (variation != null) {
-                if (!variation.isActive())
+                if (!variation.isActive()) {
                     throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
-                if (variation.getStockQuantity() < cartItem.getQuantity())
-                    throw new CustomException("Insufficient stock for '" + product.getName() +
-                            " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+                }
+                if (variation.getStockQuantity() < cartItem.getQuantity()) {
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+                }
                 variationStockUpdates.put(variation.getId(),
                         variation.getStockQuantity() - cartItem.getQuantity());
             } else {
-                if (product.getStockQuantity() < cartItem.getQuantity())
+                if (product.getStockQuantity() < cartItem.getQuantity()) {
                     throw new CustomException("Insufficient stock for '" + product.getName()
                             + "'. Available: " + product.getStockQuantity());
+                }
                 stockUpdates.put(product.getId(), product.getStockQuantity() - cartItem.getQuantity());
             }
 
@@ -250,29 +255,32 @@ public class OrderServiceImpl implements OrderService {
             recordCouponUsage(couponResult.getCoupon(), user, null, saved);
         }
 
-        // Clear cart
-        cart.getItems().clear();
-        cart.setSubtotal(BigDecimal.ZERO);
-        cart.setTotal(BigDecimal.ZERO);
-        cart.setDiscountAmount(BigDecimal.ZERO);
-        cart.setCouponCode(null);
-        cart.setCouponDiscountAmount(BigDecimal.ZERO);
-        cartRepository.save(cart);
+        boolean isMaya = "maya".equalsIgnoreCase(request.getPaymentMethod());
 
-        emailService.sendOrderConfirmationEmail(saved);
-        notificationService.createNotification(
-                user,
-                "Order Placed Successfully",
-                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
-                "ORDER",
-                saved.getId(),
-                "ORDER");
-        notificationService.createAdminNotification(
-                "New Order Received",
-                "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
-                "ORDER",
-                saved.getId(),
-                "ORDER");
+        if (!isMaya) {
+            cart.getItems().clear();
+            cart.setSubtotal(BigDecimal.ZERO);
+            cart.setTotal(BigDecimal.ZERO);
+            cart.setDiscountAmount(BigDecimal.ZERO);
+            cart.setCouponCode(null);
+            cart.setCouponDiscountAmount(BigDecimal.ZERO);
+            cartRepository.save(cart);
+
+            emailService.sendOrderConfirmationEmail(saved);
+            notificationService.createNotification(
+                    user,
+                    "Order Placed Successfully",
+                    "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
+                    "ORDER",
+                    saved.getId(),
+                    "ORDER");
+            notificationService.createAdminNotification(
+                    "New Order Received",
+                    "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
+                    "ORDER",
+                    saved.getId(),
+                    "ORDER");
+        }
         log.info("Order created: {} | user: {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), user.getEmail(), discountAmount, shippingAmount);
 
@@ -282,11 +290,13 @@ public class OrderServiceImpl implements OrderService {
     // ══════════════════════════════════════════════════════════════════════════
     // Guest order creation
     // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     @Transactional
     @SuppressWarnings("null")
     public OrderResponse createGuestOrder(GuestOrderRequest request) {
+        if (!rateLimitService.tryConsume(rateLimitService.orderBucket(request.getGuestEmail()))) {
+            throw new RateLimitException("Too many orders from this email. Please wait.");
+        }
 
         // ── Save shipping address ─────────────────────────────────────────────
         Address shippingAddress = addressRepository.save(Address.builder()
@@ -311,8 +321,9 @@ public class OrderServiceImpl implements OrderService {
             Product product = productRepository.findById(itemReq.getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("Product not found: " + itemReq.getProductId()));
 
-            if (!product.isActive())
+            if (!product.isActive()) {
                 throw new CustomException("Product '" + product.getName() + "' is no longer available");
+            }
 
             BigDecimal price;
             ProductVariation variation = null;
@@ -320,21 +331,24 @@ public class OrderServiceImpl implements OrderService {
             if (itemReq.getVariationId() != null) {
                 variation = productVariationRepository.findById(itemReq.getVariationId())
                         .orElseThrow(() -> new ResourceNotFoundException(
-                                "Variation not found: " + itemReq.getVariationId()));
+                        "Variation not found: " + itemReq.getVariationId()));
 
-                if (!variation.isActive())
+                if (!variation.isActive()) {
                     throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
-                if (variation.getStockQuantity() < itemReq.getQuantity())
+                }
+                if (variation.getStockQuantity() < itemReq.getQuantity()) {
                     throw new CustomException("Insufficient stock for '" + product.getName()
                             + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+                }
 
                 variation.setStockQuantity(variation.getStockQuantity() - itemReq.getQuantity());
                 productVariationRepository.save(variation);
                 price = (variation.getPrice() != null) ? variation.getPrice() : product.getDiscountedPrice();
             } else {
-                if (product.getStockQuantity() < itemReq.getQuantity())
+                if (product.getStockQuantity() < itemReq.getQuantity()) {
                     throw new CustomException("Insufficient stock for '" + product.getName()
                             + "'. Available: " + product.getStockQuantity());
+                }
                 product.setStockQuantity(product.getStockQuantity() - itemReq.getQuantity());
                 price = product.getDiscountedPrice();
             }
@@ -391,8 +405,9 @@ public class OrderServiceImpl implements OrderService {
                 FlashShippingRateResponse rate = flashShippingService.estimateRateManual(
                         request.getState(), request.getCity(), request.getPostalCode(), weight, cat);
                 shippingAmount = rate.getShippingFee();
-                if (rate.isUpCountry() && rate.getUpCountryFee() != null)
+                if (rate.isUpCountry() && rate.getUpCountryFee() != null) {
                     shippingAmount = shippingAmount.add(rate.getUpCountryFee());
+                }
             } catch (Exception e) {
                 log.warn("Flash shipping failed for guest order: {}", e.getMessage());
                 shippingAmount = FALLBACK_SHIPPING;
@@ -451,7 +466,6 @@ public class OrderServiceImpl implements OrderService {
         return mapToGuestOrderResponse(saved);
     }
 
-
     private void recordCouponUsage(Coupon coupon, User user, String guestEmail, Order order) {
         coupon.setCurrentUsageCount(coupon.getCurrentUsageCount() + 1);
         couponRepository.save(coupon);
@@ -471,7 +485,6 @@ public class OrderServiceImpl implements OrderService {
     // ══════════════════════════════════════════════════════════════════════════
     // Shipping resolution
     // ══════════════════════════════════════════════════════════════════════════
-
     private BigDecimal resolveShippingFee(
             BigDecimal clientFee,
             Integer expressCategory,
@@ -494,8 +507,9 @@ public class OrderServiceImpl implements OrderService {
             int category = expressCategory != null ? expressCategory : 1;
             FlashShippingRateResponse rate = flashShippingService.estimateRate(destination, weightGrams, category);
             BigDecimal fee = rate.getShippingFee();
-            if (rate.isUpCountry() && rate.getUpCountryFee() != null)
+            if (rate.isUpCountry() && rate.getUpCountryFee() != null) {
                 fee = fee.add(rate.getUpCountryFee());
+            }
             log.info("Flash Express: ₱{} ({}g, cat {})", fee, weightGrams, category);
             return fee;
         } catch (Exception e) {
@@ -507,7 +521,6 @@ public class OrderServiceImpl implements OrderService {
     // ══════════════════════════════════════════════════════════════════════════
     // Read / status / cancel operations
     // ══════════════════════════════════════════════════════════════════════════
-
     @Override
     @Transactional(readOnly = true)
     public OrderResponse getOrderById(Long id) {
@@ -521,8 +534,9 @@ public class OrderServiceImpl implements OrderService {
         User user = getCurrentUser();
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        if (!order.getUser().getId().equals(user.getId()))
+        if (!order.getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only view your own orders");
+        }
         return mapToOrderResponse(order);
     }
 
@@ -532,8 +546,9 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderNumber));
         User user = getCurrentUser();
-        if (!order.getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN"))
+        if (!order.getUser().getId().equals(user.getId()) && !user.getRole().name().equals("ADMIN")) {
             throw new CustomException("You can only track your own orders");
+        }
         return mapToOrderResponse(order);
     }
 
@@ -598,8 +613,9 @@ public class OrderServiceImpl implements OrderService {
         OrderStatus prev = order.getStatus();
         order.setStatus(status);
 
-        if (notes != null && !notes.isBlank())
+        if (notes != null && !notes.isBlank()) {
             order.setNotes(order.getNotes() != null ? order.getNotes() + "\n" + notes : notes);
+        }
 
         switch (status) {
             case SHIPPED -> {
@@ -609,7 +625,8 @@ public class OrderServiceImpl implements OrderService {
                 }
                 order.setEstimatedDelivery(LocalDateTime.now().plusDays(3));
             }
-            case DELIVERED -> order.setDeliveredAt(LocalDateTime.now());
+            case DELIVERED ->
+                order.setDeliveredAt(LocalDateTime.now());
             case CANCELLED -> {
                 order.setCancelledAt(LocalDateTime.now());
                 restoreStock(order);
@@ -622,11 +639,16 @@ public class OrderServiceImpl implements OrderService {
             if (updated.getUser() != null) {
                 String title = "Order Status Updated";
                 String message = switch (status) {
-                    case PROCESSING -> "Your order #" + updated.getOrderNumber() + " is now being processed.";
-                    case SHIPPED -> "Your order #" + updated.getOrderNumber() + " has been shipped via Flash Express.";
-                    case DELIVERED -> "Your order #" + updated.getOrderNumber() + " has been delivered. Enjoy!";
-                    case CANCELLED -> "Your order #" + updated.getOrderNumber() + " has been cancelled.";
-                    default -> "Your order #" + updated.getOrderNumber() + " status changed to " + status.name();
+                    case PROCESSING ->
+                        "Your order #" + updated.getOrderNumber() + " is now being processed.";
+                    case SHIPPED ->
+                        "Your order #" + updated.getOrderNumber() + " has been shipped via Flash Express.";
+                    case DELIVERED ->
+                        "Your order #" + updated.getOrderNumber() + " has been delivered. Enjoy!";
+                    case CANCELLED ->
+                        "Your order #" + updated.getOrderNumber() + " has been cancelled.";
+                    default ->
+                        "Your order #" + updated.getOrderNumber() + " status changed to " + status.name();
                 };
                 notificationService.createNotification(
                         updated.getUser(), title, message, "ORDER", updated.getId(), "ORDER");
@@ -641,8 +663,9 @@ public class OrderServiceImpl implements OrderService {
     public OrderResponse cancelOrder(Long id) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING)
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING) {
             throw new CustomException("Cannot cancel order in status: " + order.getStatus());
+        }
         order.setStatus(OrderStatus.CANCELLED);
         order.setCancelledAt(LocalDateTime.now());
         restoreStock(order);
@@ -656,12 +679,14 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        if (!order.getUser().getId().equals(user.getId()))
+        if (!order.getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only cancel your own orders");
+        }
 
         // Allow cancellation while PENDING or PROCESSING (before pickup)
-        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING)
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING) {
             throw new CustomException("Order cannot be cancelled once it has been shipped");
+        }
 
         String pno = order.getTrackingNumber();
 
@@ -728,12 +753,15 @@ public class OrderServiceImpl implements OrderService {
         User user = getCurrentUser();
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-        if (!order.getUser().getId().equals(user.getId()))
+        if (!order.getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only request returns for your own orders");
-        if (order.getStatus() != OrderStatus.DELIVERED)
+        }
+        if (order.getStatus() != OrderStatus.DELIVERED) {
             throw new CustomException("Returns can only be requested for delivered orders");
-        if (order.getDeliveredAt().isBefore(LocalDateTime.now().minusDays(30)))
+        }
+        if (order.getDeliveredAt().isBefore(LocalDateTime.now().minusDays(30))) {
             throw new CustomException("Return window (30 days) has expired");
+        }
         order.setStatus(OrderStatus.RETURNED);
         order.setNotes(order.getNotes() != null
                 ? order.getNotes() + "\nReturn requested: " + reason
@@ -750,8 +778,9 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal revenue = orderRepository.getTotalRevenue(start, end);
         stats.put("totalRevenue", revenue != null ? revenue : BigDecimal.ZERO);
         Map<String, Long> counts = new HashMap<>();
-        for (OrderStatus s : OrderStatus.values())
+        for (OrderStatus s : OrderStatus.values()) {
             counts.put(s.name(), Optional.ofNullable(orderRepository.countByStatus(s)).orElse(0L));
+        }
         stats.put("statusCounts", counts);
         stats.put("todayOrders", Optional.ofNullable(orderRepository.countTodayOrders()).orElse(0L));
         long total = orderRepository.count();
@@ -766,8 +795,9 @@ public class OrderServiceImpl implements OrderService {
     public Object getUserOrderCountsByStatus() {
         User user = getCurrentUser();
         Map<String, Long> counts = new HashMap<>();
-        for (OrderStatus s : OrderStatus.values())
+        for (OrderStatus s : OrderStatus.values()) {
             counts.put(s.name(), user.getOrders().stream().filter(o -> o.getStatus() == s).count());
+        }
         return counts;
     }
 
@@ -783,7 +813,6 @@ public class OrderServiceImpl implements OrderService {
     // ══════════════════════════════════════════════════════════════════════════
     // Private helpers
     // ══════════════════════════════════════════════════════════════════════════
-
     private String generateOrderNumber() {
         String ts = String.valueOf(System.currentTimeMillis());
         String rand = String.format("%04d", (int) (Math.random() * 10000));
@@ -807,8 +836,9 @@ public class OrderServiceImpl implements OrderService {
         if (addressId != null) {
             Address a = addressRepository.findById(addressId)
                     .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
-            if (!a.getUser().getId().equals(user.getId()))
+            if (!a.getUser().getId().equals(user.getId())) {
                 throw new CustomException("Address does not belong to current user");
+            }
             return a;
         }
         if (data != null) {
@@ -832,7 +862,6 @@ public class OrderServiceImpl implements OrderService {
     }
 
     // ── Response mapping ───────────────────────────────────────────────────────
-
     private OrderResponse mapToOrderResponse(Order order) {
         boolean isGuest = order.getUser() == null;
         return OrderResponse.builder()
@@ -897,8 +926,9 @@ public class OrderServiceImpl implements OrderService {
 
         if (item.getVariation() != null) {
             ProductVariation variation = item.getVariation();
-            if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank())
+            if (variation.getImageUrl() != null && !variation.getImageUrl().isBlank()) {
                 imageUrl = variation.getImageUrl();
+            }
             variationName = variation.getName();
         }
 
@@ -930,8 +960,9 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private OrderResponse.AddressResponse mapToAddressResponse(Address address) {
-        if (address == null)
+        if (address == null) {
             return null;
+        }
         return OrderResponse.AddressResponse.builder()
                 .id(address.getId())
                 .firstName(address.getFirstName())

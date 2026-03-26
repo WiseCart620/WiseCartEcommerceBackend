@@ -1,13 +1,18 @@
 package com.wisecartecommerce.ecommerce.util;
 
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.*;
+import java.util.Map;
+
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Map;
+import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Component
@@ -35,9 +40,7 @@ public class FlashExpressClient {
         return response.getBody();
     }
 
-    /**
-     * POST that returns raw bytes (for PDF label download).
-     */
+
     public byte[] postForBytes(String url, Map<String, String> params) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         params.forEach(form::add);

@@ -1,9 +1,8 @@
-# application-dev.yml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/wisecart_dev?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false
-    username: root
-    password: wisecart
+    url: ${DB_URL:jdbc:mysql://localhost:3306/wisecart_dev?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false}
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:wisecart}
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -21,13 +20,13 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
-    clean-disabled: false
+    clean-disabled: true
 
   mail:
     host: smtp.gmail.com
     port: 587
-    username: sales@wisecart.ph
-    password: nbln johj clxk mned
+    username: ${EMAIL_USERNAME:sales@wisecart.ph}
+    password: ${EMAIL_PASSWORD:pykx swqa cfja iltu}
     properties:
       mail:
         smtp:
@@ -37,36 +36,44 @@ spring:
 
 app:
   admin:
-    email: admin@wisecart.com
-    password: admin123
+    email: ${ADMIN_EMAIL:admin@wisecart.com}
+    password: ${ADMIN_PASSWORD:admin123}
   contact:
-    recipient-email: sales@wisecart.ph
-    password: admin123
-    firstName: Admin
-    lastName: User
+    recipient-email: ${CONTACT_RECIPIENT_EMAIL:sales@wisecart.ph}
+    password: ${ADMIN_PASSWORD:admin123}
+    firstName: ${ADMIN_FIRST_NAME:Admin}
+    lastName: ${ADMIN_LAST_NAME:User}
   jwt:
-    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
     expiration: 86400000
     refresh-expiration: 604800000
   file:
-    upload-dir: ./uploads-dev
+    upload-dir: ${UPLOAD_DIR:./uploads-dev}
     max-image-size: 5242880
     max-document-size: 10485760
 
 server:
-  port: 8080
+  port: ${PORT:8080}
   servlet:
     context-path: /api
 
 flash:
   express:
-    mch-id: BA0097
-    secret-key: cde04a4490b14447f4b2f4966ba5d77a8d3fc7470243511aa00c75a269c55890
-    warehouse-no: ""
+    mch-id: ${FLASH_EXPRESS_MCH_ID:}
+    secret-key: ${FLASH_EXPRESS_SECRET_KEY:}
+    warehouse-no: ${FLASH_EXPRESS_WAREHOUSE_NO:}
     base-url: https://open-api-tra.flashexpress.ph
-    src-province-name: Metro Manila
-    src-city-name: Muntinlupa City
-    src-postal-code: 1634
-    src-detail-address: "Unit 81E, Udings Compound St. Bernadette College of Alabang East Service Road, Cupang Muntinlupa City, Metro Manila, Philippines 1780"
-    src-name: "WiseCart"
-    src-phone: "09636026511"
+    src-province-name: ${FLASH_EXPRESS_SRC_PROVINCE:Metro Manila}
+    src-city-name: ${FLASH_EXPRESS_SRC_CITY:Muntinlupa City}
+    src-postal-code: ${FLASH_EXPRESS_SRC_POSTAL:1634}
+    src-detail-address: ${FLASH_EXPRESS_SRC_DETAIL_ADDRESS:123 Test Street}
+    src-name: ${FLASH_EXPRESS_SRC_NAME:WiseCart}
+    src-phone: ${FLASH_EXPRESS_SRC_PHONE:09000000000}
+
+maya:
+  public-key: ${MAYA_PUBLIC_KEY:pk-wSBGHAbpZo8G3zZytnulwIrSnPsYmv0tIJMewQTPwHh}
+  secret-key: ${MAYA_SECRET_KEY:sk-7k5IxzddlHT4VnckqnbQN81vEqaG8CgvV0utpp84K0v}
+  base-url: ${MAYA_BASE_URL:https://pg.maya.ph}
+  success-url: ${MAYA_SUCCESS_URL:http://localhost:3000/payment/success}
+  failure-url: ${MAYA_FAILURE_URL:http://localhost:3000/payment/failed}
+  cancel-url: ${MAYA_CANCEL_URL:http://localhost:3000/payment/cancelled}

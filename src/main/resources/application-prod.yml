@@ -22,8 +22,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${MAIL_USERNAME}
-    password: ${MAIL_PASSWORD}
+    username: ${EMAIL_USERNAME}
+    password: ${EMAIL_PASSWORD}
     properties:
       mail:
         smtp:
@@ -34,6 +34,7 @@ spring:
 app:
   admin:
     email: ${ADMIN_EMAIL}
+    password: ${ADMIN_PASSWORD}
   contact:
     recipient-email: ${CONTACT_RECIPIENT_EMAIL:sales@wisecart.ph}
     password: ${ADMIN_PASSWORD}
@@ -62,3 +63,14 @@ flash:
     src-province-name: ${FLASH_EXPRESS_SRC_PROVINCE}
     src-city-name: ${FLASH_EXPRESS_SRC_CITY}
     src-postal-code: ${FLASH_EXPRESS_SRC_POSTAL}
+    src-detail-address: ${FLASH_EXPRESS_SRC_DETAIL_ADDRESS}
+    src-name: ${FLASH_EXPRESS_SRC_NAME}
+    src-phone: ${FLASH_EXPRESS_SRC_PHONE}
+
+maya:
+  public-key: ${MAYA_PUBLIC_KEY}
+  secret-key: ${MAYA_SECRET_KEY}
+  base-url: https://pg.maya.ph
+  success-url: https://wisecart.ph/payment/success
+  failure-url: https://wisecart.ph/payment/failed
+  cancel-url: https://wisecart.ph/payment/cancelled

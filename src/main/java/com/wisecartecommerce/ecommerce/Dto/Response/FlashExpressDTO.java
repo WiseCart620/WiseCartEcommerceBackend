@@ -1,11 +1,11 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import lombok.Data;
-import lombok.Builder;
-import lombok.NoArgsConstructor;
-import lombok.AllArgsConstructor;
-
 import java.math.BigDecimal;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 public class FlashExpressDTO {
 
@@ -14,12 +14,12 @@ public class FlashExpressDTO {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class ShippingRateResponse {
-        private BigDecimal estimatePrice;       // converted from cents to PHP
-        private Integer pricePolicy;            // 1=weight, 2=dimensions
+        private BigDecimal estimatePrice;
+        private Integer pricePolicy;
         private String pricePolicyText;
         private Boolean upCountry;
-        private BigDecimal upCountryAmount;     // PHP
-        private BigDecimal codTransferFee;      // PHP
+        private BigDecimal upCountryAmount;
+        private BigDecimal codTransferFee;
         private Integer expressCategory;
     }
 

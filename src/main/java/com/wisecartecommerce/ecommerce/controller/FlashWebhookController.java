@@ -1,18 +1,23 @@
 package com.wisecartecommerce.ecommerce.controller;
 
-import com.wisecartecommerce.ecommerce.entity.Order;
-import com.wisecartecommerce.ecommerce.repository.OrderRepository;
-import com.wisecartecommerce.ecommerce.service.impl.PaymentServiceImpl;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import com.wisecartecommerce.ecommerce.util.OrderStatus;
-
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.service.impl.PaymentServiceImpl;
+import com.wisecartecommerce.ecommerce.util.OrderStatus;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/webhook/flash")
@@ -67,7 +72,6 @@ public class FlashWebhookController {
         return ResponseEntity.ok(successResponse());
     }
 
-    // ─── Core update logic ────────────────────────────────────────────────────
 
     private void updateOrderFromWebhook(String pno, String outTradeNo,
             String stateStr, String stateText) {
@@ -75,7 +79,6 @@ public class FlashWebhookController {
         if (order == null)
             return;
 
-        // ── NEW: skip all updates for orders already cancelled locally ──────────
         if (order.getStatus() == OrderStatus.CANCELLED) {
             log.debug("Flash webhook: skipping update for locally-cancelled order PNO={}", pno);
             return;

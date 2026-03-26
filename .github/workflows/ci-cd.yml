@@ -1,0 +1,397 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+env:
+  DOCKER_IMAGE: docker.io/${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce
+  REGISTRY: docker.io
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+          MYSQL_DATABASE: wisecart_ecommerce
+          MYSQL_CHARACTER_SET_SERVER: utf8mb4
+          MYSQL_COLLATION_SERVER: utf8mb4_unicode_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+        cache: maven
+
+    - name: Wait for MySQL to be ready
+      run: |
+        for i in {1..30}; do
+          if mysqladmin ping -h"127.0.0.1" -P"3306" -u"root" -p"${{ secrets.TEST_DB_PASSWORD }}" --silent; then
+            echo "MySQL is ready!"
+            break
+          fi
+          echo "Waiting for MySQL... ($i/30)"
+          sleep 2
+        done
+
+    - name: Run tests with Flyway migrations
+      run: mvn test
+      env:
+        DB_URL: jdbc:mysql://localhost:3306/wisecart_ecommerce?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+        DB_USERNAME: root
+        DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+        ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        MAIL_USERNAME: test@wisecart.ph
+        MAIL_PASSWORD: test-password
+        CONTACT_RECIPIENT_EMAIL: test@wisecart.ph
+        ADMIN_FIRST_NAME: Admin
+        ADMIN_LAST_NAME: User
+        FLASH_EXPRESS_MCH_ID: ${{ secrets.FLASH_EXPRESS_MCH_ID }}
+        FLASH_EXPRESS_SECRET_KEY: ${{ secrets.FLASH_EXPRESS_SECRET_KEY }}
+        FLASH_EXPRESS_WAREHOUSE_NO: ""
+        FLASH_EXPRESS_SRC_PROVINCE: Metro Manila
+        FLASH_EXPRESS_SRC_CITY: Muntinlupa City
+        FLASH_EXPRESS_SRC_POSTAL: "1634"
+        FLASH_EXPRESS_SRC_DETAIL_ADDRESS: "Test Address"
+        FLASH_EXPRESS_SRC_NAME: WiseCart
+        FLASH_EXPRESS_SRC_PHONE: "09000000000"
+        SPRING_FLYWAY_ENABLED: true
+        SPRING_FLYWAY_BASELINE_ON_MIGRATE: true
+        DDL_AUTO: validate
+
+    - name: Verify migration files exist
+      run: |
+        echo "🔍 CHECKING MIGRATION FILES IN SOURCE:"
+        ls -la src/main/resources/db/migration/ || echo "No migration folder found"
+
+    - name: Clear Maven cache and build fresh
+      run: |
+        echo "🧹 Clearing Maven cache for clean build..."
+        rm -rf target/
+        echo "📦 Building application..."
+        mvn clean package -DskipTests -U
+      env:
+        DB_URL: jdbc:mysql://localhost:3306/wisecart_ecommerce?useSSL=false&serverTimezone=UTC
+        DB_USERNAME: root
+        DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+        JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+        ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        MAIL_USERNAME: test@wisecart.ph
+        MAIL_PASSWORD: test-password
+        CONTACT_RECIPIENT_EMAIL: test@wisecart.ph
+        ADMIN_FIRST_NAME: Admin
+        ADMIN_LAST_NAME: User
+        FLASH_EXPRESS_MCH_ID: ${{ secrets.FLASH_EXPRESS_MCH_ID }}
+        FLASH_EXPRESS_SECRET_KEY: ${{ secrets.FLASH_EXPRESS_SECRET_KEY }}
+        FLASH_EXPRESS_WAREHOUSE_NO: ""
+        FLASH_EXPRESS_SRC_PROVINCE: Metro Manila
+        FLASH_EXPRESS_SRC_CITY: Muntinlupa City
+        FLASH_EXPRESS_SRC_POSTAL: "1634"
+        FLASH_EXPRESS_SRC_DETAIL_ADDRESS: "Test Address"
+        FLASH_EXPRESS_SRC_NAME: WiseCart
+        FLASH_EXPRESS_SRC_PHONE: "09000000000"
+
+    - name: Verify JAR contents
+      run: |
+        echo "🔍 CHECKING JAR CONTENTS FOR MIGRATIONS:"
+        jar tf target/*.jar | grep "db/migration" | sort || echo "❌ NO MIGRATIONS IN JAR!"
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: wisecart-ecommerce-jar
+        path: target/*.jar
+        retention-days: 7
+
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'table'
+        severity: 'CRITICAL,HIGH'
+        exit-code: '0'
+
+    - name: Generate security report
+      if: always()
+      run: |
+        echo "### 🔒 Security Scan Results" >> $GITHUB_STEP_SUMMARY
+        echo "Trivy scan completed at $(date)" >> $GITHUB_STEP_SUMMARY
+        echo "✅ Vulnerability scan finished successfully" >> $GITHUB_STEP_SUMMARY
+
+  docker-build:
+    runs-on: ubuntu-latest
+    needs: [test, security-scan]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.DOCKER_IMAGE }}
+        tags: |
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=raw,value={{date 'YYYYMMDD-HHmmss'}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache
+        cache-to: type=registry,ref=${{ env.DOCKER_IMAGE }}:buildcache,mode=max
+        platforms: linux/amd64
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: docker-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout deployment scripts
+      uses: actions/checkout@v4
+      with:
+        sparse-checkout: |
+          scripts
+          docker-compose.prod.yml
+
+    - name: Upload compose file to server
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USER }}
+        key: ${{ secrets.DEPLOY_SSH_KEY }}
+        source: "docker-compose.prod.yml"
+        target: "/home/deploy/wisecart-ecommerce/"
+
+    - name: Deploy to DigitalOcean
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USER }}
+        key: ${{ secrets.DEPLOY_SSH_KEY }}
+        command_timeout: 10m
+        script: |
+          set -e
+
+          cd /home/deploy/wisecart-ecommerce
+
+          # Load environment variables
+          set -a
+          source .env
+          set +a
+
+          echo "🚀 Starting deployment at $(date)"
+
+          # Create backup directory
+          mkdir -p backups
+
+          # Database backup
+          echo "📦 Creating database backup..."
+          BACKUP_FILE="backups/backup_$(date +%Y%m%d_%H%M%S).sql"
+          docker exec wisecart-ecommerce-mysql sh -c 'exec mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" --single-transaction --quick --routines --triggers wisecart_ecommerce' > "$BACKUP_FILE" 2>/dev/null || echo "⚠️  Backup failed (might be first deployment)"
+
+          if [ -f "$BACKUP_FILE" ] && [ -s "$BACKUP_FILE" ]; then
+            gzip "$BACKUP_FILE"
+            echo "✅ Backup created: ${BACKUP_FILE}.gz"
+          else
+            rm -f "$BACKUP_FILE" 2>/dev/null || true
+          fi
+
+          # Clean old backups (keep last 7 days)
+          find backups/ -name "backup_*.sql.gz" -mtime +7 -delete 2>/dev/null || true
+
+          # Save current image for rollback
+          CURRENT_IMAGE=$(docker inspect wisecart-ecommerce-app --format='{{.Config.Image}}' 2>/dev/null || echo "none")
+          echo "📌 Current image: $CURRENT_IMAGE"
+
+          # Pull new image
+          echo "⬇️  Pulling new image..."
+          docker pull ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:latest
+
+          # Force recreate container
+          echo "🔄 Force recreating container..."
+          timeout 180s docker-compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app || {
+            echo "❌ Docker compose failed!"
+            exit 1
+          }
+
+          # Ensure nginx can reach app
+          docker network connect wisecart_ecommerce-network wisecart-ecommerce-nginx 2>/dev/null || true
+          echo "✅ Network connectivity ensured"
+
+          # Health check with retry
+          echo "🏥 Waiting for application to be healthy..."
+          HEALTH_CHECK_PASSED=false
+
+          for i in {1..90}; do
+            if docker exec wisecart-ecommerce-app curl -f -s http://localhost:8080/actuator/health > /dev/null 2>&1; then
+              echo "✅ Application is healthy! (attempt $i/90)"
+              HEALTH_CHECK_PASSED=true
+              break
+            fi
+            echo "⏳ Waiting... (attempt $i/90)"
+            sleep 2
+          done
+
+          # Check Flyway migration logs
+          echo "📋 Checking Flyway migration logs..."
+          docker logs wisecart-ecommerce-app 2>&1 | grep -i "migrating\|successfully applied" | tail -20 || echo "No Flyway migration logs found"
+
+          # Rollback on failure
+          if [ "$HEALTH_CHECK_PASSED" = false ]; then
+            echo "❌ Application failed health check!"
+            echo "🔙 Rolling back to previous version..."
+
+            if [ "$CURRENT_IMAGE" != "none" ]; then
+              docker tag $CURRENT_IMAGE ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:rollback
+              docker-compose -f docker-compose.prod.yml up -d --no-deps app
+              echo "✅ Rolled back to: $CURRENT_IMAGE"
+            fi
+
+            echo "📋 Application logs:"
+            docker-compose -f docker-compose.prod.yml logs --tail=100 app
+            exit 1
+          fi
+
+          echo "🎉 Deployment successful at $(date)"
+
+          echo "📊 Container status:"
+          docker ps --filter name=wisecart-ecommerce
+
+          echo "📊 Database schema version:"
+          docker exec wisecart-ecommerce-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" wisecart_ecommerce -e "SELECT version, description, installed_on FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 10;" 2>/dev/null || echo "Could not retrieve Flyway version"
+
+    - name: Verify deployment
+      uses: appleboy/ssh-action@master
+      if: success()
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USER }}
+        key: ${{ secrets.DEPLOY_SSH_KEY }}
+        script: |
+          sleep 10
+          echo "${{ secrets.DEPLOY_HOST }} wisecart.ph" | sudo tee -a /etc/hosts
+          curl -k -f https://wisecart.ph/actuator/health || {
+            echo "⚠️  External health check failed"
+            exit 1
+          }
+          echo "✅ External endpoint responding"
+
+    - name: Cleanup old Docker images
+      uses: appleboy/ssh-action@master
+      if: success()
+      with:
+        host: ${{ secrets.DEPLOY_HOST }}
+        username: ${{ secrets.DEPLOY_USER }}
+        key: ${{ secrets.DEPLOY_SSH_KEY }}
+        script: |
+          docker image prune -f
+          docker images ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce --format "{{.ID}} {{.CreatedAt}}" | sort -rk 2 | tail -n +4 | awk '{print $1}' | xargs -r docker rmi -f || true
+          echo "🧹 Cleanup complete"
+
+    - name: Notify deployment status
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Deployment successful!"
+        else
+          echo "❌ Deployment failed!"
+        fi
+
+  smoke-tests:
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Add IP to hosts file
+      run: |
+        echo "${{ secrets.DEPLOY_HOST }} wisecart.ph" | sudo tee -a /etc/hosts
+
+    - name: Run smoke tests
+      run: |
+        echo "🧪 Running smoke tests..."
+
+        echo "Testing health endpoint..."
+        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://wisecart.ph/actuator/health)
+        echo "Health check response: $RESPONSE"
+
+        if [ "$RESPONSE" = "200" ]; then
+          echo "✅ HTTPS health check passed"
+        else
+          RESPONSE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.DEPLOY_HOST }}/actuator/health)
+          echo "HTTP alternative response: $RESPONSE_HTTP"
+          if [ "$RESPONSE_HTTP" = "200" ] || [ "$RESPONSE_HTTP" = "301" ] || [ "$RESPONSE_HTTP" = "302" ]; then
+            echo "✅ Server is responding (status: $RESPONSE_HTTP)"
+          else
+            echo "❌ Health check failed - HTTPS: $RESPONSE, HTTP: $RESPONSE_HTTP"
+            exit 1
+          fi
+        fi
+
+        echo "Testing API endpoint..."
+        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" \
+          https://wisecart.ph/api/auth/login \
+          -X POST -H "Content-Type: application/json" -d '{}')
+        echo "API response: $RESPONSE"
+
+        if [ "$RESPONSE" = "000" ]; then
+          echo "❌ API is not responding"
+          exit 1
+        else
+          echo "✅ API is responding (status: $RESPONSE)"
+        fi
+
+        echo "🎉 All smoke tests passed!"

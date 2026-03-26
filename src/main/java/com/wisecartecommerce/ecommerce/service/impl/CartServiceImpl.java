@@ -1,7 +1,14 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,6 +32,7 @@ import com.wisecartecommerce.ecommerce.entity.SavedCart;
 import com.wisecartecommerce.ecommerce.entity.SavedCartItem;
 import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
+import com.wisecartecommerce.ecommerce.exception.RateLimitException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
 import com.wisecartecommerce.ecommerce.repository.CartItemRepository;
@@ -37,16 +45,11 @@ import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.repository.SavedCartRepository;
 import com.wisecartecommerce.ecommerce.service.CartService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.service.RateLimitService;
 import com.wisecartecommerce.ecommerce.util.ShippingWeightCalculator;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -63,6 +66,7 @@ public class CartServiceImpl implements CartService {
     private final ProductVariationRepository productVariationRepository;
     private final AddressRepository addressRepository;
     private final FlashExpressShippingService flashShippingService;
+    private final RateLimitService rateLimitService;
     private final ShippingWeightCalculator weightCalculator;
     private final com.wisecartecommerce.ecommerce.repository.AppSettingsRepository appSettingsRepository;
 
@@ -208,10 +212,10 @@ public class CartServiceImpl implements CartService {
     private CartItem getItemByProductAndVariation(Cart cart, Long productId, Long variationId) {
         return cart.getItems().stream()
                 .filter(item -> !item.isAddon()
-                        && item.getProduct().getId().equals(productId)
-                        && !item.getSavedForLater()
-                        && item.getVariation() != null
-                        && item.getVariation().getId().equals(variationId))
+                && item.getProduct().getId().equals(productId)
+                && !item.getSavedForLater()
+                && item.getVariation() != null
+                && item.getVariation().getId().equals(variationId))
                 .findFirst()
                 .orElse(null);
     }
@@ -252,12 +256,15 @@ public class CartServiceImpl implements CartService {
 
             cartItem.setQuantity(quantity);
 
-            if (request.getGiftWrap() != null)
+            if (request.getGiftWrap() != null) {
                 cartItem.setGiftWrap(request.getGiftWrap());
-            if (request.getGiftMessage() != null)
+            }
+            if (request.getGiftMessage() != null) {
                 cartItem.setGiftMessage(request.getGiftMessage());
-            if (request.getNotes() != null)
+            }
+            if (request.getNotes() != null) {
                 cartItem.setNotes(request.getNotes());
+            }
         }
 
         cart.calculateTotals();
@@ -304,7 +311,7 @@ public class CartServiceImpl implements CartService {
             for (CartRequest.CartItemRequest itemRequest : request.getItems()) {
                 Product product = productRepository.findById(itemRequest.getProductId())
                         .orElseThrow(() -> new ResourceNotFoundException(
-                                "Product not found with id: " + itemRequest.getProductId()));
+                        "Product not found with id: " + itemRequest.getProductId()));
 
                 if (!product.isActive()) {
                     throw new CustomException("Product " + product.getName() + " is not available");
@@ -371,6 +378,9 @@ public class CartServiceImpl implements CartService {
     @Transactional
     public CartResponse applyCoupon(CouponApplyRequest request) {
         User user = getCurrentUser();
+        if (!rateLimitService.tryConsume(rateLimitService.couponBucket(user.getId().toString()))) {
+            throw new RateLimitException("Too many coupon attempts. Please slow down.");
+        }
         Cart cart = cartRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
@@ -431,7 +441,7 @@ public class CartServiceImpl implements CartService {
                     } else {
                         warnings.put("stock_" + product.getId(),
                                 product.getName() + " has limited stock. Only " + product.getStockQuantity()
-                                        + " available");
+                                + " available");
                     }
                 }
             }
@@ -570,8 +580,9 @@ public class CartServiceImpl implements CartService {
                     province, city, postal, totalWeightGrams, 1);
 
             BigDecimal standardFee = standard.getShippingFee();
-            if (standard.isUpCountry() && standard.getUpCountryFee() != null)
+            if (standard.isUpCountry() && standard.getUpCountryFee() != null) {
                 standardFee = standardFee.add(standard.getUpCountryFee());
+            }
 
             result.put("standardShipping", standardFee);
             result.put("upCountry", standard.isUpCountry());
@@ -583,8 +594,9 @@ public class CartServiceImpl implements CartService {
                 FlashShippingRateResponse onTime = flashShippingService.estimateRateManual(
                         province, city, postal, totalWeightGrams, 2);
                 BigDecimal onTimeFee = onTime.getShippingFee();
-                if (onTime.isUpCountry() && onTime.getUpCountryFee() != null)
+                if (onTime.isUpCountry() && onTime.getUpCountryFee() != null) {
                     onTimeFee = onTimeFee.add(onTime.getUpCountryFee());
+                }
                 result.put("onTimeShipping", onTimeFee);
             } catch (Exception e) {
                 result.put("onTimeShipping",
@@ -752,8 +764,8 @@ public class CartServiceImpl implements CartService {
                 throw new CustomException("You have reached the usage limit for this coupon");
             }
         }
-        if (coupon.getMinimumPurchaseAmount() != null &&
-                cart.getSubtotal().compareTo(coupon.getMinimumPurchaseAmount()) < 0) {
+        if (coupon.getMinimumPurchaseAmount() != null
+                && cart.getSubtotal().compareTo(coupon.getMinimumPurchaseAmount()) < 0) {
             throw new CustomException(
                     "Minimum purchase amount of " + coupon.getMinimumPurchaseAmount() + " required for this coupon");
         }
@@ -766,8 +778,8 @@ public class CartServiceImpl implements CartService {
         }
         if (coupon.getApplicableCategories() != null && !coupon.getApplicableCategories().isEmpty()) {
             boolean hasApplicableCategory = cart.getItems().stream()
-                    .anyMatch(item -> item.getProduct().getCategory() != null &&
-                            coupon.getApplicableCategories().contains(item.getProduct().getCategory().getId()));
+                    .anyMatch(item -> item.getProduct().getCategory() != null
+                    && coupon.getApplicableCategories().contains(item.getProduct().getCategory().getId()));
             if (!hasApplicableCategory) {
                 throw new CustomException("This coupon is not applicable to product categories in your cart");
             }

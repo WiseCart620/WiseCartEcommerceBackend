@@ -1,15 +1,21 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.entity.FlashExpressSettings;
 import com.wisecartecommerce.ecommerce.service.FlashExpressSettingsService;
+
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/admin/flash-express/settings")
@@ -29,6 +35,12 @@ public class AdminFlashExpressSettingsController {
     public ResponseEntity<ApiResponse<FlashExpressSettingsResponse>> updateSettings(
             @Valid @RequestBody FlashExpressSettingsRequest request) {
 
+        // If secretKey is blank, keep the existing one — supports the "Replace" button pattern
+        if (request.getSecretKey() == null || request.getSecretKey().isBlank()) {
+            FlashExpressSettings existing = settingsService.getSettings();
+            request.setSecretKey(existing.getSecretKey());
+        }
+
         FlashExpressSettings updated = settingsService.updateSettings(toEntity(request));
         return ResponseEntity.ok(ApiResponse.success("Settings updated successfully", toResponse(updated)));
     }
@@ -38,7 +50,7 @@ public class AdminFlashExpressSettingsController {
     @Data
     public static class FlashExpressSettingsRequest {
         @NotBlank private String mchId;
-        @NotBlank private String secretKey;
+        private String secretKey;      // ← no longer @NotBlank, blank = keep existing
         @NotBlank private String baseUrl;
         private String warehouseNo;
         @NotBlank private String srcName;
@@ -52,7 +64,7 @@ public class AdminFlashExpressSettingsController {
     @Data
     public static class FlashExpressSettingsResponse {
         private String mchId;
-        private String secretKey;
+        private String secretKey;      // always masked, never the real value
         private String baseUrl;
         private String warehouseNo;
         private String srcName;
@@ -84,7 +96,7 @@ public class AdminFlashExpressSettingsController {
     private FlashExpressSettingsResponse toResponse(FlashExpressSettings s) {
         FlashExpressSettingsResponse res = new FlashExpressSettingsResponse();
         res.setMchId(s.getMchId());
-        res.setSecretKey(s.getSecretKey());
+        res.setSecretKey(maskSecret(s.getSecretKey()));   // ← masked here
         res.setBaseUrl(s.getBaseUrl());
         res.setWarehouseNo(s.getWarehouseNo());
         res.setSrcName(s.getSrcName());
@@ -95,5 +107,11 @@ public class AdminFlashExpressSettingsController {
         res.setSrcDetailAddress(s.getSrcDetailAddress());
         res.setUpdatedAt(s.getUpdatedAt() != null ? s.getUpdatedAt().toString() : null);
         return res;
+    }
+
+    // Shows first 4 and last 4 chars only — e.g. "cde0****890"
+    private String maskSecret(String value) {
+        if (value == null || value.length() < 8) return "********";
+        return value.substring(0, 4) + "****" + value.substring(value.length() - 4);
     }
 }
