@@ -14,8 +14,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.wisecartecommerce.ecommerce.Dto.Request.MayaInitiateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.PaymentRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+import com.wisecartecommerce.ecommerce.service.MayaCheckoutService;
 import com.wisecartecommerce.ecommerce.service.PaymentResponse;
 import com.wisecartecommerce.ecommerce.service.PaymentService;
 
@@ -34,6 +36,7 @@ import lombok.RequiredArgsConstructor;
 public class PaymentController {
 
     private final PaymentService paymentService;
+    private final MayaCheckoutService mayaCheckoutService;
 
     @PostMapping
     @Operation(summary = "Process payment")
@@ -89,12 +92,21 @@ public class PaymentController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/maya/checkout/{orderId}")
-    @Operation(summary = "Create Maya checkout session")
-    public ResponseEntity<ApiResponse<Map<String, String>>> createMayaCheckout(
-            @PathVariable Long orderId) {
-        String checkoutUrl = paymentService.createMayaCheckout(orderId);
-        return ResponseEntity.ok(ApiResponse.success("Maya checkout created",
+
+    @PostMapping("/maya/initiate")
+    @Operation(summary = "Initiate Maya checkout (no order created yet)")
+    public ResponseEntity<ApiResponse<Map<String, String>>> initiateMayaCheckout(
+            @RequestBody MayaInitiateRequest request) {
+        String checkoutUrl = mayaCheckoutService.initiateMayaCheckout(request);
+        return ResponseEntity.ok(ApiResponse.success("Maya checkout initiated",
                 Map.of("checkoutUrl", checkoutUrl)));
+    }
+
+    @GetMapping("/maya/status")
+    @Operation(summary = "Poll checkout status after returning from Maya")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> getMayaCheckoutStatus(
+            @RequestParam String ref) {
+        Map<String, Object> status = mayaCheckoutService.getCheckoutStatus(ref);
+        return ResponseEntity.ok(ApiResponse.success("Checkout status", status));
     }
 }

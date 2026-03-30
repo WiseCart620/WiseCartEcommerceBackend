@@ -1,10 +1,8 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -18,12 +16,9 @@ import com.wisecartecommerce.ecommerce.entity.Payment;
 import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
-import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.service.EmailService;
-import com.wisecartecommerce.ecommerce.service.MayaService;
-import com.wisecartecommerce.ecommerce.service.NotificationService;
 import com.wisecartecommerce.ecommerce.service.PaymentResponse;
 import com.wisecartecommerce.ecommerce.service.PaymentService;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
@@ -40,9 +35,6 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final OrderRepository orderRepository;
     private final EmailService emailService;
-    private final MayaService mayaService;
-    private final CartRepository cartRepository;
-    private final NotificationService notificationService;
 
     // ══════════════════════════════════════════════════════════════════════════
     // Process payment
@@ -431,134 +423,4 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
-    @Override
-    @Transactional
-    public String createMayaCheckout(Long orderId) {
-        User user = getCurrentUser();
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-
-        if (!order.getUser().getId().equals(user.getId())) {
-            throw new CustomException("You can only pay for your own orders");
-        }
-
-        if (order.getStatus() != OrderStatus.PENDING) {
-            throw new CustomException("Order cannot be paid in its current status");
-        }
-
-        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
-            throw new CustomException("Order has already been paid");
-        }
-
-        try {
-            String checkoutUrl = mayaService.createCheckout(order);
-            String transactionId = generateTransactionId();
-            Payment payment = Payment.builder()
-                    .order(order)
-                    .transactionId(transactionId)
-                    .amount(order.getFinalAmount())
-                    .status(PaymentStatus.PENDING)
-                    .paymentMethod("MAYA")
-                    .paymentGateway("Maya")
-                    .payerEmail(user.getEmail())
-                    .payerName(user.getFirstName() + " " + user.getLastName())
-                    .build();
-            paymentRepository.save(payment);
-
-            log.info("Maya checkout created for order {}", order.getOrderNumber());
-            return checkoutUrl;
-
-        } catch (Exception e) {
-            log.error("Maya checkout failed for order {}: {}", order.getOrderNumber(), e.getMessage());
-
-            // Cancel the order cleanly instead of hard-deleting it
-            order.setStatus(OrderStatus.CANCELLED);
-            order.setCancelledAt(java.time.LocalDateTime.now());
-            order.setNotes("Maya checkout failed: " + e.getMessage());
-            orderRepository.save(order);
-
-            throw new RuntimeException("Maya checkout failed: " + e.getMessage());
-        }
-    }
-
-    @Override
-    @Transactional
-    public void handleMayaWebhook(Map<String, Object> payload) {
-        String status = (String) payload.get("status");
-        String referenceNumber = (String) payload.get("requestReferenceNumber");
-
-        log.info("Maya webhook received: status={} ref={}", status, referenceNumber);
-
-        Order order = null;
-        if (referenceNumber != null && referenceNumber.startsWith("WC-")) {
-            try {
-                Long orderId = Long.parseLong(referenceNumber.replace("WC-", ""));
-                order = orderRepository.findById(orderId).orElse(null);
-            } catch (NumberFormatException e) {
-                log.warn("Invalid Maya reference number format: {}", referenceNumber);
-            }
-        }
-        if (order == null) {
-            log.warn("Maya webhook: order not found for ref={}", referenceNumber);
-            return;
-        }
-
-        Payment payment = paymentRepository
-                .findFirstByOrderIdOrderByCreatedAtDesc(order.getId())
-                .orElse(null);
-
-        if ("PAYMENT_SUCCESS".equals(status)) {
-            if (payment != null) {
-                payment.setStatus(PaymentStatus.COMPLETED);
-                payment.setCompletedAt(LocalDateTime.now());
-                paymentRepository.save(payment);
-            }
-            order.setPaymentStatus(PaymentStatus.COMPLETED);
-            order.setStatus(OrderStatus.PROCESSING);
-            orderRepository.save(order);
-
-            // ── Clear the cart now that payment is confirmed ──────────────────────────
-            if (order.getUser() != null) {
-                cartRepository.findByUserIdWithItems(order.getUser().getId()).ifPresent(cart -> {
-                    cart.getItems().clear();
-                    cart.setSubtotal(BigDecimal.ZERO);
-                    cart.setTotal(BigDecimal.ZERO);
-                    cart.setDiscountAmount(BigDecimal.ZERO);
-                    cart.setCouponCode(null);
-                    cart.setCouponDiscountAmount(BigDecimal.ZERO);
-                    cartRepository.save(cart);
-                    log.info("Cart cleared after Maya payment success for order {}", referenceNumber);
-                });
-            }
-
-            emailService.sendOrderConfirmationEmail(order);
-            log.info("Maya payment completed for order {}", referenceNumber);
-
-            if (order.getUser() != null) {
-                notificationService.createNotification(
-                        order.getUser(),
-                        "Order Placed Successfully",
-                        "Your order #" + order.getOrderNumber() + " has been placed and is being processed.",
-                        "ORDER",
-                        order.getId(),
-                        "ORDER");
-                notificationService.createAdminNotification(
-                        "New Order Received",
-                        "Order #" + order.getOrderNumber() + " was placed by " + order.getUser().getEmail() + ".",
-                        "ORDER",
-                        order.getId(),
-                        "ORDER");
-            }
-
-        } else if ("PAYMENT_FAILED".equals(status) || "PAYMENT_EXPIRED".equals(status)) {
-            if (payment != null) {
-                payment.setStatus(PaymentStatus.FAILED);
-                payment.setFailedAt(LocalDateTime.now());
-                paymentRepository.save(payment);
-            }
-            order.setPaymentStatus(PaymentStatus.FAILED);
-            orderRepository.save(order);
-            log.info("Maya payment failed/expired for order {}", referenceNumber);
-        }
-    }
 }

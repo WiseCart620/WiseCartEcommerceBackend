@@ -71,9 +71,10 @@ flash:
     src-phone: ${FLASH_EXPRESS_SRC_PHONE:09636026511}
 
 maya:
-  public-key: ${MAYA_PUBLIC_KEY:pk-wSBGHAbpZo8G3zZytnulwIrSnPsYmv0tIJMewQTPwHh}
-  secret-key: ${MAYA_SECRET_KEY:sk-7k5IxzddlHT4VnckqnbQN81vEqaG8CgvV0utpp84K0v}
-  base-url: ${MAYA_BASE_URL:https://pg.maya.ph}
+  public-key: ${MAYA_PUBLIC_KEY:pk-Z0OSzLvIcOI2UIvDhdTGVVfRSSeiGStnceqwUE7n0Ah}
+  secret-key: ${MAYA_SECRET_KEY:sk-X8qolYjy62kIzEbr0QRK1h4b4KDVHaNcwMYk39jInSl}
+  base-url: ${MAYA_BASE_URL:https://pg-sandbox.paymaya.com}
   success-url: ${MAYA_SUCCESS_URL:http://localhost:3000/payment/success}
   failure-url: ${MAYA_FAILURE_URL:http://localhost:3000/payment/failed}
   cancel-url: ${MAYA_CANCEL_URL:http://localhost:3000/payment/cancelled}
+  webhook-url: ${MAYA_WEBHOOK_URL:https://unrevertible-senaida-continentally.ngrok-free.dev/api/webhooks/maya}

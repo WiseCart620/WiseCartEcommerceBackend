@@ -1,16 +1,16 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 import com.wisecartecommerce.ecommerce.util.PaymentStatus;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
@@ -42,6 +42,7 @@ public class OrderResponse {
     private String notes;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private String mayaPaymentMethod;
 
     @Data
     @Builder
@@ -62,6 +63,7 @@ public class OrderResponse {
         private String addonVariationId;
         private String addonVariationName;
         private BigDecimal addonPrice;
+        
     }
 
     @Data

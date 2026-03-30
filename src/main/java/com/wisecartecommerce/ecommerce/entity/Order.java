@@ -51,6 +51,9 @@ public class Order {
     private String guestLastName;
     private String guestPhone;
 
+    @Column(name = "maya_payment_method")
+    private String mayaPaymentMethod;
+
     @Column(name = "order_number", nullable = false, unique = true)
     private String orderNumber;
 

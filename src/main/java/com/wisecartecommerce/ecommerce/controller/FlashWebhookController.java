@@ -1,9 +1,12 @@
 package com.wisecartecommerce.ecommerce.controller;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.TreeMap;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wisecartecommerce.ecommerce.entity.Order;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.service.FlashExpressSettingsService;
 import com.wisecartecommerce.ecommerce.service.impl.PaymentServiceImpl;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 
@@ -27,14 +31,63 @@ public class FlashWebhookController {
 
     private final OrderRepository orderRepository;
     private final PaymentServiceImpl paymentService;
+    private final FlashExpressSettingsService settingsService;
+
+
+    private boolean isSignatureValid(Map<String, String> params) {
+        String receivedSign = params.get("sign");
+        String mchId       = params.get("mchId");
+        String nonceStr    = params.get("nonceStr");
+
+        if (receivedSign == null || mchId == null || nonceStr == null) {
+            log.warn("Flash webhook: missing sign/mchId/nonceStr");
+            return false;
+        }
+
+        try {
+            String secretKey = settingsService.getSettings().getSecretKey();
+
+            TreeMap<String, String> toSign = new TreeMap<>();
+            if (!mchId.isBlank())    toSign.put("mchId",    mchId);
+            if (!nonceStr.isBlank()) toSign.put("nonceStr", nonceStr);
+
+            StringBuilder sb = new StringBuilder();
+            toSign.forEach((k, v) -> sb.append(k).append('=').append(v).append('&'));
+            sb.append("key=").append(secretKey);
+
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
+
+            StringBuilder hex = new StringBuilder();
+            for (byte b : hash) {
+                hex.append(String.format("%02X", b));
+            }
+
+            boolean valid = hex.toString().equals(receivedSign.toUpperCase());
+            if (!valid) {
+                log.warn("Flash webhook: signature mismatch. expected={} received={}", hex, receivedSign);
+            }
+            return valid;
+
+        } catch (Exception e) {
+            log.error("Flash webhook signature verification error: {}", e.getMessage());
+            return false;
+        }
+    }
 
     @PostMapping("/status")
     public ResponseEntity<Map<String, String>> handleStatusWebhook(
             @RequestParam Map<String, String> params) {
+
+        if (!isSignatureValid(params)) {
+            log.warn("Flash status webhook: invalid signature — rejected");
+            return ResponseEntity.ok(errorResponse());
+        }
+
         try {
-            String pno = params.get("data[pno]");
+            String pno       = params.get("data[pno]");
             String outTradeNo = params.get("data[outTradeNo]");
-            String stateStr = params.get("data[state]");
+            String stateStr  = params.get("data[state]");
             String stateText = params.get("data[stateText]");
 
             log.info("Flash status webhook: PNO={}, outTradeNo={}, state={} ({})",
@@ -52,13 +105,19 @@ public class FlashWebhookController {
     @PostMapping("/routes")
     public ResponseEntity<Map<String, String>> handleRoutesWebhook(
             @RequestParam Map<String, String> params) {
+
+        if (!isSignatureValid(params)) {
+            log.warn("Flash routes webhook: invalid signature — rejected");
+            return ResponseEntity.ok(errorResponse());
+        }
+
         try {
-            String pno = params.get("data[pno]");
+            String pno        = params.get("data[pno]");
             String outTradeNo = params.get("data[outTradeNo]");
-            String stateStr = params.get("data[state]");
-            String stateText = params.get("data[stateText]");
+            String stateStr   = params.get("data[state]");
+            String stateText  = params.get("data[stateText]");
             String routeAction = params.get("data[routedAction]");
-            String message = params.get("data[message]");
+            String message    = params.get("data[message]");
 
             log.info("Flash routes webhook: PNO={}, state={} ({}), action={}, msg={}",
                     pno, stateStr, stateText, routeAction, message);
@@ -72,12 +131,10 @@ public class FlashWebhookController {
         return ResponseEntity.ok(successResponse());
     }
 
-
     private void updateOrderFromWebhook(String pno, String outTradeNo,
             String stateStr, String stateText) {
         Order order = resolveOrder(pno, outTradeNo);
-        if (order == null)
-            return;
+        if (order == null) return;
 
         if (order.getStatus() == OrderStatus.CANCELLED) {
             log.debug("Flash webhook: skipping update for locally-cancelled order PNO={}", pno);
@@ -93,15 +150,15 @@ public class FlashWebhookController {
         }
 
         OrderStatus newStatus = switch (flashState) {
-            case 1 -> OrderStatus.PROCESSING;
-            case 2 -> OrderStatus.SHIPPED;
-            case 3 -> OrderStatus.OUT_FOR_DELIVERY;
-            case 4 -> OrderStatus.SHIPPED;
-            case 5 -> OrderStatus.DELIVERED;
-            case 6 -> OrderStatus.SHIPPED;
-            case 7 -> OrderStatus.RETURNED;
-            case 8 -> OrderStatus.CANCELLED;
-            case 9 -> OrderStatus.CANCELLED;
+            case 1  -> OrderStatus.PROCESSING;
+            case 2  -> OrderStatus.SHIPPED;
+            case 3  -> OrderStatus.OUT_FOR_DELIVERY;
+            case 4  -> OrderStatus.SHIPPED;
+            case 5  -> OrderStatus.DELIVERED;
+            case 6  -> OrderStatus.SHIPPED;
+            case 7  -> OrderStatus.RETURNED;
+            case 8  -> OrderStatus.CANCELLED;
+            case 9  -> OrderStatus.CANCELLED;
             case 98 -> OrderStatus.CANCELLED;
             case 99 -> OrderStatus.PROCESSING;
             default -> null;
@@ -160,8 +217,7 @@ public class FlashWebhookController {
             try {
                 Long orderId = Long.parseLong(outTradeNo);
                 orderOpt = orderRepository.findById(orderId);
-            } catch (NumberFormatException ignored) {
-            }
+            } catch (NumberFormatException ignored) {}
         }
 
         if (orderOpt.isEmpty()) {
@@ -177,18 +233,17 @@ public class FlashWebhookController {
     }
 
     private int statusRank(OrderStatus status) {
-        if (status == null)
-            return 0;
+        if (status == null) return 0;
         return switch (status) {
-            case PENDING -> 1;
-            case PROCESSING -> 2;
-            case SHIPPED -> 3;
-            case OUT_FOR_DELIVERY -> 4;
-            case DELIVERED -> 5;
-            case RETURNED -> 5;
-            case CANCELLED -> 5;
-            case REFUNDED -> 5;
-            case FAILED -> 5;
+            case PENDING           -> 1;
+            case PROCESSING        -> 2;
+            case SHIPPED           -> 3;
+            case OUT_FOR_DELIVERY  -> 4;
+            case DELIVERED         -> 5;
+            case RETURNED          -> 5;
+            case CANCELLED         -> 5;
+            case REFUNDED          -> 5;
+            case FAILED            -> 5;
         };
     }
 
@@ -196,6 +251,12 @@ public class FlashWebhookController {
         Map<String, String> resp = new HashMap<>();
         resp.put("errorCode", "1");
         resp.put("state", "success");
+        return resp;
+    }
+
+    private Map<String, String> errorResponse() {
+        Map<String, String> resp = new HashMap<>();
+        resp.put("errorCode", "0");
         return resp;
     }
 }

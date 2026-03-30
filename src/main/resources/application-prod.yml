@@ -74,3 +74,4 @@ maya:
   success-url: https://wisecart.ph/payment/success
   failure-url: https://wisecart.ph/payment/failed
   cancel-url: https://wisecart.ph/payment/cancelled
+  webhook-url: ${MAYA_WEBHOOK_URL:}

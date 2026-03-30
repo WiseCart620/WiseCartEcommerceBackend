@@ -26,7 +26,15 @@ public class FlashExpressClient {
 
     public Map<String, Object> post(String url, Map<String, String> params) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
-        params.forEach((k, v) -> form.set(k, v));
+        params.forEach((k, v) -> {
+            if (v != null) {
+                // Trim the value to remove any whitespace
+                String trimmedValue = v.trim();
+                form.set(k, trimmedValue);
+            } else {
+                form.set(k, "");
+            }
+        });
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
@@ -39,7 +47,6 @@ public class FlashExpressClient {
         ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, entity, Map.class);
         return response.getBody();
     }
-
 
     public byte[] postForBytes(String url, Map<String, String> params) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();

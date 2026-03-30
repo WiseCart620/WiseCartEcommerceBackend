@@ -1,7 +1,6 @@
 package com.wisecartecommerce.ecommerce.service;
 
 import java.util.List;
-import java.util.Map;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.PaymentRequest;
 import com.wisecartecommerce.ecommerce.util.PaymentStatus;
@@ -26,7 +25,4 @@ public interface PaymentService {
 
     PaymentResponse getPaymentByTransactionId(String transactionId);
 
-    String createMayaCheckout(Long orderId);
-
-    void handleMayaWebhook(Map<String, Object> payload);
 }

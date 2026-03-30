@@ -1,5 +1,8 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.time.LocalDate;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -7,12 +10,11 @@ import com.wisecartecommerce.ecommerce.Dto.Request.GuestOrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.CustomerTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
+import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 
-import java.time.LocalDate;
-import java.util.List;
-
 public interface OrderService {
+
     OrderResponse createOrder(OrderRequest request);
 
     OrderResponse getOrderById(Long id);
@@ -53,4 +55,6 @@ public interface OrderService {
     OrderResponse createGuestOrder(GuestOrderRequest request);
 
     OrderResponse trackGuestOrder(String orderNumber, String email);
+
+    OrderResponse createOrderForUser(User user, OrderRequest request);
 }

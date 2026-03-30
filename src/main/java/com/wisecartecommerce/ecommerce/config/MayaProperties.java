@@ -15,4 +15,5 @@ public class MayaProperties {
     private String successUrl;
     private String failureUrl;
     private String cancelUrl;
+    private String webhookUrl;
 }

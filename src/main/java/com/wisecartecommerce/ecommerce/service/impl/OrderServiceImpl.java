@@ -45,6 +45,7 @@ import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
+import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.service.EmailService;
@@ -55,6 +56,7 @@ import com.wisecartecommerce.ecommerce.service.RateLimitService;
 import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
 import com.wisecartecommerce.ecommerce.util.CouponValidator;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
+import com.wisecartecommerce.ecommerce.util.PaymentStatus;
 import com.wisecartecommerce.ecommerce.util.ShippingWeightCalculator;
 
 import lombok.RequiredArgsConstructor;
@@ -73,6 +75,7 @@ public class OrderServiceImpl implements OrderService {
     private final ProductVariationRepository productVariationRepository;
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
+    private final PaymentRepository paymentRepository;
 
     // ── Services ───────────────────────────────────────────────────────────────
     private final EmailService emailService;
@@ -204,16 +207,19 @@ public class OrderServiceImpl implements OrderService {
 
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
-        // ── Build + persist order ──────────────────────────────────────────────
+        boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
+
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
                 .user(user)
                 .shippingAddress(shippingAddress)
                 .billingAddress(billingAddress)
                 .paymentMethod(request.getPaymentMethod())
+                .mayaPaymentMethod(request.getMayaPaymentMethod())
                 .couponCode(couponCode)
                 .notes(request.getNotes())
-                .status(OrderStatus.PENDING)
+                .status(isCod ? OrderStatus.PENDING : OrderStatus.PROCESSING)
+                .paymentStatus(isCod ? PaymentStatus.PENDING : PaymentStatus.COMPLETED)
                 .totalAmount(subtotal)
                 .discountAmount(discountAmount)
                 .shippingAmount(shippingAmount)
@@ -229,6 +235,18 @@ public class OrderServiceImpl implements OrderService {
 
         Order saved = orderRepository.save(order);
         orderRepository.flush();
+
+        Payment mayaPayment = Payment.builder()
+                .order(saved)
+                .transactionId("TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase())
+                .amount(finalAmount)
+                .status(isCod ? PaymentStatus.PENDING : PaymentStatus.COMPLETED)
+                .paymentMethod(isCod ? "COD" : (request.getMayaPaymentMethod() != null ? request.getMayaPaymentMethod() : "maya"))
+                .paymentGateway(isCod ? "CashOnDelivery" : "Maya")
+                .completedAt(isCod ? null : LocalDateTime.now())
+                .build();
+        paymentRepository.save(mayaPayment);
+        saved.getPayments().add(mayaPayment);
 
         int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
         int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
@@ -283,6 +301,189 @@ public class OrderServiceImpl implements OrderService {
         }
         log.info("Order created: {} | user: {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), user.getEmail(), discountAmount, shippingAmount);
+
+        return mapToOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse createOrderForUser(User user, OrderRequest request) {
+        Cart cart = cartRepository.findByUserIdWithItems(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cart is empty"));
+
+        if (cart.getItems().isEmpty()) {
+            throw new CustomException("Cannot create order with an empty cart");
+        }
+
+        Address shippingAddress = resolveAddress(
+                request.getShippingAddressId(), request.getShippingAddress(), user);
+        Address billingAddress = shippingAddress;
+
+        List<OrderItem> orderItems = new ArrayList<>();
+        Map<Long, Integer> stockUpdates = new HashMap<>();
+        Map<Long, Integer> variationStockUpdates = new HashMap<>();
+
+        for (CartItem cartItem : cart.getItems()) {
+            Product product = cartItem.getProduct();
+            ProductVariation variation = cartItem.getVariation();
+
+            if (!product.isActive()) {
+                throw new CustomException("Product '" + product.getName() + "' is no longer available");
+            }
+
+            if (variation != null) {
+                if (!variation.isActive()) {
+                    throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
+                }
+                if (variation.getStockQuantity() < cartItem.getQuantity()) {
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+                }
+                variationStockUpdates.put(variation.getId(),
+                        variation.getStockQuantity() - cartItem.getQuantity());
+            } else {
+                if (product.getStockQuantity() < cartItem.getQuantity()) {
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + "'. Available: " + product.getStockQuantity());
+                }
+                stockUpdates.put(product.getId(), product.getStockQuantity() - cartItem.getQuantity());
+            }
+
+            OrderItem orderItem = OrderItem.builder()
+                    .product(product)
+                    .variation(variation)
+                    .quantity(cartItem.getQuantity())
+                    .price(cartItem.getPrice())
+                    .subtotal(cartItem.getSubtotal())
+                    .isAddon(cartItem.isAddon())
+                    .addonProduct(cartItem.getAddonProduct())
+                    .addonProductAddOn(cartItem.getAddonProductAddOn())
+                    .addonVariation(cartItem.getAddonVariation())
+                    .addonPrice(cartItem.getAddonPrice())
+                    .build();
+
+            orderItems.add(orderItem);
+            product.setSoldCount(product.getSoldCount() + cartItem.getQuantity());
+        }
+
+        BigDecimal subtotal = cart.getSubtotal();
+
+        String couponCode = cart.getCouponCode();
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        boolean couponFreeShipping = false;
+        CouponValidationResult couponResult = null;
+
+        if (couponCode != null && !couponCode.isBlank()) {
+            try {
+                couponResult = couponValidator.validate(couponCode, subtotal, user.getId());
+                discountAmount = couponResult.getDiscountAmount();
+                couponFreeShipping = couponResult.isFreeShipping();
+            } catch (CustomException e) {
+                log.warn("Coupon '{}' invalid at checkout: {}", couponCode, e.getMessage());
+                couponCode = null;
+            }
+        }
+
+        BigDecimal shippingAmount;
+        if (couponFreeShipping) {
+            shippingAmount = BigDecimal.ZERO;
+        } else {
+            shippingAmount = resolveShippingFee(
+                    request.getShippingFee(),
+                    request.getExpressCategory(),
+                    shippingAddress,
+                    subtotal,
+                    cart.getItems());
+        }
+
+        BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+        BigDecimal taxAmount = taxableAmount.multiply(VAT_RATE).setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
+
+        boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
+
+        Order order = Order.builder()
+                .orderNumber(generateOrderNumber())
+                .user(user)
+                .shippingAddress(shippingAddress)
+                .billingAddress(billingAddress)
+                .paymentMethod(request.getPaymentMethod())
+                .mayaPaymentMethod(request.getMayaPaymentMethod())
+                .couponCode(couponCode)
+                .notes(request.getNotes())
+                .status(isCod ? OrderStatus.PENDING : OrderStatus.PROCESSING)
+                .paymentStatus(isCod ? PaymentStatus.PENDING : PaymentStatus.COMPLETED)
+                .totalAmount(subtotal)
+                .discountAmount(discountAmount)
+                .shippingAmount(shippingAmount)
+                .taxAmount(taxAmount)
+                .finalAmount(finalAmount)
+                .items(new ArrayList<>())
+                .build();
+
+        for (OrderItem item : orderItems) {
+            item.setOrder(order);
+            order.getItems().add(item);
+        }
+
+        Order saved = orderRepository.save(order);
+        orderRepository.flush();
+
+        Payment mayaPayment = Payment.builder()
+                .order(saved)
+                .transactionId("TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase())
+                .amount(finalAmount)
+                .status(isCod ? PaymentStatus.PENDING : PaymentStatus.COMPLETED)
+                .paymentMethod(isCod ? "COD" : (request.getMayaPaymentMethod() != null ? request.getMayaPaymentMethod() : "maya"))
+                .paymentGateway(isCod ? "CashOnDelivery" : "Maya")
+                .completedAt(isCod ? null : LocalDateTime.now())
+                .build();
+        paymentRepository.save(mayaPayment);
+        saved.getPayments().add(mayaPayment);
+
+        int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
+        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+        assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
+        saved = orderRepository.save(saved);
+
+        for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
+            productRepository.findById(entry.getKey()).ifPresent(p -> {
+                p.setStockQuantity(entry.getValue());
+                productRepository.save(p);
+            });
+        }
+        for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
+            productVariationRepository.findById(entry.getKey()).ifPresent(v -> {
+                v.setStockQuantity(entry.getValue());
+                productVariationRepository.save(v);
+            });
+        }
+
+        if (couponResult != null) {
+            recordCouponUsage(couponResult.getCoupon(), user, null, saved);
+        }
+
+        // Clear the cart
+        cart.getItems().clear();
+        cart.setSubtotal(BigDecimal.ZERO);
+        cart.setTotal(BigDecimal.ZERO);
+        cart.setDiscountAmount(BigDecimal.ZERO);
+        cart.setCouponCode(null);
+        cart.setCouponDiscountAmount(BigDecimal.ZERO);
+        cartRepository.save(cart);
+
+        emailService.sendOrderConfirmationEmail(saved);
+        notificationService.createNotification(user,
+                "Order Placed Successfully",
+                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
+                "ORDER", saved.getId(), "ORDER");
+        notificationService.createAdminNotification(
+                "New Order Received",
+                "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
+                "ORDER", saved.getId(), "ORDER");
+
+        log.info("Maya order created: {} | user: {} | amount: ₱{}",
+                saved.getOrderNumber(), user.getEmail(), finalAmount);
 
         return mapToOrderResponse(saved);
     }
@@ -704,7 +905,9 @@ public class OrderServiceImpl implements OrderService {
         if (pno != null && pno.startsWith("P")) {
             try {
                 FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
-                if (flashData != null && flashData.getState() != null && flashData.getState() >= 50) {
+                if (flashData != null && flashData.getState() != null && flashData.getState() >= 1
+                        && flashData.getState() != 99
+                        && flashData.getState() != 0) {
                     throw new CustomException(
                             "Your order has already been picked up by the courier and cannot be cancelled.");
                 }
@@ -881,6 +1084,7 @@ public class OrderServiceImpl implements OrderService {
                 .shippingAddress(mapToAddressResponse(order.getShippingAddress()))
                 .billingAddress(mapToAddressResponse(order.getBillingAddress()))
                 .paymentMethod(order.getPaymentMethod())
+                .mayaPaymentMethod(order.getMayaPaymentMethod())
                 .paymentStatus(order.getPaymentStatus())
                 .couponCode(order.getCouponCode())
                 .trackingNumber(order.getTrackingNumber())
