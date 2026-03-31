@@ -36,12 +36,15 @@ public class Address {
     @EqualsAndHashCode.Include
     private Long id;
 
+    @Column(name = "is_deleted", nullable = false)
+    private boolean isDeleted = false;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
     @Column(name = "address_type")
-    private String addressType; // SHIPPING, BILLING, BOTH
+    private String addressType;
 
     @Column(name = "first_name", nullable = false)
     private String firstName;

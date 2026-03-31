@@ -1,7 +1,11 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -10,9 +14,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.wisecartecommerce.ecommerce.Dto.Request.AddressRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.ChangePasswordRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.UpdateProfileRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.UpdateUserRequest;
+import com.wisecartecommerce.ecommerce.Dto.Response.AddressResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.UserResponse;
 import com.wisecartecommerce.ecommerce.config.JwtService;
 import com.wisecartecommerce.ecommerce.entity.Address;
@@ -25,8 +31,8 @@ import com.wisecartecommerce.ecommerce.service.FileStorageService;
 import com.wisecartecommerce.ecommerce.service.UserService;
 import com.wisecartecommerce.ecommerce.util.Role;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @Service
 @RequiredArgsConstructor
@@ -155,6 +161,7 @@ public class UserServiceImpl implements UserService {
     public Object getUserAddresses() {
         User user = getCurrentUser();
         return addressRepository.findByUserId(user.getId()).stream()
+                .filter(a -> !a.isDeleted())
                 .map(this::mapAddressToResponse)
                 .collect(Collectors.toList());
     }
@@ -164,29 +171,28 @@ public class UserServiceImpl implements UserService {
     public Object addAddress(Object addressRequest) {
         User user = getCurrentUser();
 
-        // Parse address request (simplified - you should create proper DTO)
-        Map<String, Object> request = (Map<String, Object>) addressRequest;
+        AddressRequest request = (AddressRequest) addressRequest;
 
         Address address = Address.builder()
                 .user(user)
-                .firstName((String) request.get("firstName"))
-                .lastName((String) request.get("lastName"))
-                .phone((String) request.get("phone"))
-                .addressLine1((String) request.get("addressLine1"))
-                .addressLine2((String) request.get("addressLine2"))
-                .city((String) request.get("city"))
-                .state((String) request.get("state"))
-                .postalCode((String) request.get("postalCode"))
-                .country((String) request.get("country"))
-                .addressType((String) request.get("addressType"))
-                .companyName((String) request.get("companyName"))
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
+                .phone(request.getPhone())
+                .addressLine1(request.getAddressLine1())
+                .addressLine2(request.getAddressLine2())
+                .city(request.getCity())
+                .state(request.getState())
+                .postalCode(request.getPostalCode())
+                .country(request.getCountry())
+                .addressType(request.getAddressType())
+                .companyName(request.getCompanyName())
                 .build();
 
-        // If this is the first address or user wants it as default, set as default
-        boolean isDefault = request.get("isDefault") != null && (Boolean) request.get("isDefault");
-        if (isDefault || addressRepository.findByUserId(user.getId()).isEmpty()) {
+        boolean isDefault = Boolean.TRUE.equals(request.getIsDefault());
+        boolean hasNoAddresses = addressRepository.findByUserId(user.getId())
+                .stream().noneMatch(a -> !a.isDeleted());
+        if (isDefault || hasNoAddresses) {
             address.setDefault(true);
-            // Unset previous default if exists
             addressRepository.findByUserIdAndIsDefaultTrue(user.getId())
                     .ifPresent(addr -> addr.setDefault(false));
         }
@@ -209,55 +215,44 @@ public class UserServiceImpl implements UserService {
             throw new CustomException("You can only update your own addresses");
         }
 
-        Map<String, Object> request = (Map<String, Object>) addressRequest;
+        AddressRequest request = (AddressRequest) addressRequest;
 
-        if (request.get("firstName") != null) {
-            address.setFirstName((String) request.get("firstName"));
+        if (request.getFirstName() != null) {
+            address.setFirstName(request.getFirstName());
+        }
+        if (request.getLastName() != null) {
+            address.setLastName(request.getLastName());
+        }
+        if (request.getPhone() != null) {
+            address.setPhone(request.getPhone());
+        }
+        if (request.getAddressLine1() != null) {
+            address.setAddressLine1(request.getAddressLine1());
+        }
+        if (request.getAddressLine2() != null) {
+            address.setAddressLine2(request.getAddressLine2());
+        }
+        if (request.getCity() != null) {
+            address.setCity(request.getCity());
+        }
+        if (request.getState() != null) {
+            address.setState(request.getState());
+        }
+        if (request.getPostalCode() != null) {
+            address.setPostalCode(request.getPostalCode());
+        }
+        if (request.getCountry() != null) {
+            address.setCountry(request.getCountry());
+        }
+        if (request.getAddressType() != null) {
+            address.setAddressType(request.getAddressType());
+        }
+        if (request.getCompanyName() != null) {
+            address.setCompanyName(request.getCompanyName());
         }
 
-        if (request.get("lastName") != null) {
-            address.setLastName((String) request.get("lastName"));
-        }
-
-        if (request.get("phone") != null) {
-            address.setPhone((String) request.get("phone"));
-        }
-
-        if (request.get("addressLine1") != null) {
-            address.setAddressLine1((String) request.get("addressLine1"));
-        }
-
-        if (request.get("addressLine2") != null) {
-            address.setAddressLine2((String) request.get("addressLine2"));
-        }
-
-        if (request.get("city") != null) {
-            address.setCity((String) request.get("city"));
-        }
-
-        if (request.get("state") != null) {
-            address.setState((String) request.get("state"));
-        }
-
-        if (request.get("postalCode") != null) {
-            address.setPostalCode((String) request.get("postalCode"));
-        }
-
-        if (request.get("country") != null) {
-            address.setCountry((String) request.get("country"));
-        }
-
-        if (request.get("addressType") != null) {
-            address.setAddressType((String) request.get("addressType"));
-        }
-
-        if (request.get("companyName") != null) {
-            address.setCompanyName((String) request.get("companyName"));
-        }
-
-        if (request.get("isDefault") != null && (Boolean) request.get("isDefault")) {
+        if (Boolean.TRUE.equals(request.getIsDefault())) {
             address.setDefault(true);
-            // Unset previous default
             addressRepository.findByUserIdAndIsDefaultTrue(user.getId())
                     .ifPresent(addr -> {
                         if (!addr.getId().equals(addressId)) {
@@ -285,17 +280,25 @@ public class UserServiceImpl implements UserService {
             throw new CustomException("You can only delete your own addresses");
         }
 
-        if (address.isDefault() && addressRepository.findByUserId(user.getId()).size() > 1) {
-            throw new CustomException("Cannot delete default address. Set another address as default first.");
+        if (address.isDefault()) {
+            long activeCount = addressRepository.findByUserId(user.getId())
+                    .stream()
+                    .filter(a -> !a.isDeleted())
+                    .count();
+            if (activeCount > 1) {
+                throw new CustomException("Cannot delete default address. Set another address as default first.");
+            }
         }
 
-        addressRepository.delete(address);
-        log.info("Address deleted for user: {}", user.getEmail());
+        address.setDeleted(true);
+        addressRepository.save(address);
+        log.info("Address soft-deleted for user: {}", user.getEmail());
     }
 
     @Override
     @Transactional
-    public Object setDefaultAddress(Long addressId) {
+    public Object setDefaultAddress(Long addressId
+    ) {
         User user = getCurrentUser();
 
         Address address = addressRepository.findById(addressId)
@@ -357,30 +360,34 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void addToWishlist(Long productId) {
+    public void addToWishlist(Long productId
+    ) {
         // Implementation depends on Product entity
         log.info("Adding product {} to wishlist", productId);
     }
 
     @Override
     @Transactional
-    public void removeFromWishlist(Long productId) {
+    public void removeFromWishlist(Long productId
+    ) {
         // Implementation depends on Product entity
         log.info("Removing product {} from wishlist", productId);
     }
 
     // Admin methods
-
     @Override
     @Transactional(readOnly = true)
-    public Page<UserResponse> getAllUsers(Pageable pageable, String role, Boolean enabled, String search) {
+    public Page<UserResponse> getAllUsers(Pageable pageable, String role,
+            Boolean enabled, String search
+    ) {
         Page<User> users = userRepository.findUsersWithFilters(role, enabled, search, pageable);
         return users.map(this::mapToUserResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse getUserById(Long id) {
+    public UserResponse getUserById(Long id
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return mapToUserResponse(user);
@@ -388,7 +395,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateUser(Long id, UpdateUserRequest request) {
+    public UserResponse updateUser(Long id, UpdateUserRequest request
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -422,7 +430,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateUserRole(Long id, String role) {
+    public UserResponse updateUserRole(Long id, String role
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -442,7 +451,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateUserStatus(Long id, boolean enabled) {
+    public UserResponse updateUserStatus(Long id, boolean enabled
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -456,7 +466,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void deleteUser(Long id) {
+    public void deleteUser(Long id
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -493,7 +504,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserResponse> getRecentUsers(int limit) {
+    public List<UserResponse> getRecentUsers(int limit
+    ) {
         Pageable pageable = org.springframework.data.domain.PageRequest.of(0, limit,
                 org.springframework.data.domain.Sort.by("createdAt").descending());
 
@@ -505,7 +517,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public String generateImpersonationToken(Long id) {
+    public String generateImpersonationToken(Long id
+    ) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -547,24 +560,23 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
-    private Map<String, Object> mapAddressToResponse(Address address) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("id", address.getId());
-        response.put("firstName", address.getFirstName());
-        response.put("lastName", address.getLastName());
-        response.put("phone", address.getPhone());
-        response.put("addressLine1", address.getAddressLine1());
-        response.put("addressLine2", address.getAddressLine2());
-        response.put("city", address.getCity());
-        response.put("state", address.getState());
-        response.put("postalCode", address.getPostalCode());
-        response.put("country", address.getCountry());
-        response.put("addressType", address.getAddressType());
-        response.put("companyName", address.getCompanyName());
-        response.put("isDefault", address.isDefault());
-        response.put("createdAt", address.getCreatedAt());
-        response.put("updatedAt", address.getUpdatedAt());
-
-        return response;
+    private AddressResponse mapAddressToResponse(Address address) {
+        return AddressResponse.builder()
+                .id(address.getId())
+                .firstName(address.getFirstName())
+                .lastName(address.getLastName())
+                .phone(address.getPhone())
+                .addressLine1(address.getAddressLine1())
+                .addressLine2(address.getAddressLine2())
+                .city(address.getCity())
+                .state(address.getState())
+                .postalCode(address.getPostalCode())
+                .country(address.getCountry())
+                .addressType(address.getAddressType())
+                .companyName(address.getCompanyName())
+                .isDefault(address.isDefault())
+                .createdAt(address.getCreatedAt())
+                .updatedAt(address.getUpdatedAt())
+                .build();
     }
 }

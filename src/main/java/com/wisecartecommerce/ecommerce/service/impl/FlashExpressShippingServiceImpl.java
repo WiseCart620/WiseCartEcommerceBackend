@@ -192,7 +192,6 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         if (!isFlashExpressConfigured()) {
             throw new CustomException("Flash Express is not configured");
         }
-
         FlashExpressSettings settings = getSettings();
         Map<String, String> params = new LinkedHashMap<>();
         params.put("mchId", settings.getMchId());
@@ -200,16 +199,15 @@ public class FlashExpressShippingServiceImpl implements FlashExpressShippingServ
         params.put("sign", FlashExpressSignatureUtil.generateSign(params, settings.getSecretKey()));
 
         String url = settings.getBaseUrl() + "/open/v1/orders/" + pno + "/pre_print";
-        log.info("Downloading Flash Express label for PNO={}", pno);
-
         byte[] pdfBytes = client.postForBytes(url, params);
 
         if (pdfBytes == null || pdfBytes.length == 0) {
             throw new CustomException("Empty label response from Flash Express for PNO: " + pno);
         }
-
         return pdfBytes;
     }
+
+    
 
     @Override
     public FlashNotifyResponse notifyCourier(int estimateParcelNumber, String remark) {

@@ -181,4 +181,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
                             )
                         """, nativeQuery = true)
     List<Object[]> findAllCustomerContacts();
+
+    @Query("SELECT o FROM Order o WHERE o.trackingNumber IS NOT NULL "
+            + "AND o.trackingNumber LIKE 'P%' "
+            + "AND o.status NOT IN :terminalStatuses")
+    List<Order> findActiveFlashOrders(
+            @Param("terminalStatuses") List<OrderStatus> terminalStatuses);
+
 }

@@ -1,6 +1,5 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
-
 import java.time.LocalDate;
 import java.util.List;
 
@@ -28,7 +27,6 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
-
 @RestController
 @RequestMapping("/admin/orders")
 @RequiredArgsConstructor
@@ -50,15 +48,15 @@ public class AdminOrderController {
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate,
             @RequestParam(required = false) String customerEmail) {
-        
-        Sort sort = sortDir.equalsIgnoreCase("asc") 
-            ? Sort.by(sortBy).ascending() 
-            : Sort.by(sortBy).descending();
-        
+
+        Sort sort = sortDir.equalsIgnoreCase("asc")
+                ? Sort.by(sortBy).ascending()
+                : Sort.by(sortBy).descending();
+
         Pageable pageable = PageRequest.of(page, size, sort);
         Page<OrderResponse> orders = orderService.getAllOrders(
-            pageable, status, startDate, endDate, customerEmail);
-        
+                pageable, status, startDate, endDate, customerEmail);
+
         return ResponseEntity.ok(ApiResponse.success("Orders retrieved", orders));
     }
 
@@ -66,6 +64,15 @@ public class AdminOrderController {
     @Operation(summary = "Get order by ID")
     public ResponseEntity<ApiResponse<OrderResponse>> getOrderById(@PathVariable Long id) {
         OrderResponse response = orderService.getOrderById(id);
+        String pno = response.getTrackingNumber();
+        if (pno != null && pno.startsWith("P")
+                && response.getStatus() != OrderStatus.DELIVERED
+                && response.getStatus() != OrderStatus.CANCELLED
+                && response.getStatus() != OrderStatus.RETURNED) {
+            orderService.syncFlashDeliveryStatus(pno);
+            response = orderService.getOrderById(id);
+        }
+
         return ResponseEntity.ok(ApiResponse.success("Order retrieved", response));
     }
 
@@ -75,7 +82,7 @@ public class AdminOrderController {
             @PathVariable Long id,
             @RequestParam OrderStatus status,
             @RequestParam(required = false) String notes) {
-        
+
         OrderResponse response = orderService.updateOrderStatus(id, status, notes);
         return ResponseEntity.ok(ApiResponse.success("Order status updated", response));
     }
@@ -92,7 +99,7 @@ public class AdminOrderController {
     public ResponseEntity<ApiResponse<Object>> getOrderStats(
             @RequestParam(required = false) LocalDate startDate,
             @RequestParam(required = false) LocalDate endDate) {
-        
+
         Object stats = orderService.getOrderStats(startDate, endDate);
         return ResponseEntity.ok(ApiResponse.success("Statistics retrieved", stats));
     }
@@ -101,23 +108,20 @@ public class AdminOrderController {
     @Operation(summary = "Get recent orders")
     public ResponseEntity<ApiResponse<List<OrderResponse>>> getRecentOrders(
             @RequestParam(defaultValue = "10") int limit) {
-        
+
         List<OrderResponse> orders = orderService.getRecentOrders(limit);
         return ResponseEntity.ok(ApiResponse.success("Recent orders retrieved", orders));
     }
-
-
-
 
     @GetMapping("/today")
     @Operation(summary = "Get today's orders")
     public ResponseEntity<ApiResponse<Page<OrderResponse>>> getTodayOrders(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
+
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<OrderResponse> orders = orderService.getTodayOrders(pageable);
-        
+
         return ResponseEntity.ok(ApiResponse.success("Today's orders retrieved", orders));
     }
 
@@ -127,10 +131,10 @@ public class AdminOrderController {
             @PathVariable Long userId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        
+
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<OrderResponse> orders = orderService.getOrdersByCustomer(userId, pageable);
-        
+
         return ResponseEntity.ok(ApiResponse.success("Customer orders retrieved", orders));
     }
 }

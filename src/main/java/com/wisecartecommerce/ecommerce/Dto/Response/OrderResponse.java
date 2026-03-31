@@ -17,6 +17,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class OrderResponse {
+
     private Long id;
     private String orderNumber;
     private Long userId;
@@ -34,6 +35,7 @@ public class OrderResponse {
     private PaymentStatus paymentStatus;
     private String couponCode;
     private String trackingNumber;
+    private Integer flashState;
     private String shippingCarrier;
     private LocalDateTime estimatedDelivery;
     private LocalDateTime deliveredAt;
@@ -49,6 +51,7 @@ public class OrderResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class OrderItemResponse {
+
         private Long id;
         private Long productId;
         private String productName;
@@ -63,7 +66,10 @@ public class OrderResponse {
         private String addonVariationId;
         private String addonVariationName;
         private BigDecimal addonPrice;
-        
+        private Integer flashState;
+        private String trackingNumber;
+        private OrderStatus status;
+
     }
 
     @Data
@@ -71,6 +77,7 @@ public class OrderResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class PaymentResponse {
+
         private Long id;
         private String transactionId;
         private BigDecimal amount;
@@ -86,6 +93,7 @@ public class OrderResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class AddressResponse {
+
         private Long id;
         private String firstName;
         private String lastName;

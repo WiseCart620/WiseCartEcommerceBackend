@@ -1,8 +1,12 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -21,6 +25,7 @@ import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.entity.Order;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.service.OrderService;
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -41,23 +46,21 @@ public class AdminShippingController {
 
     private final FlashExpressShippingService shippingService;
     private final OrderRepository orderRepository;
-
+    private final OrderService orderService;
 
     @GetMapping("/label/{pno}")
     @Operation(summary = "Download shipping label PDF for a Flash PNO")
     public ResponseEntity<byte[]> downloadLabel(@PathVariable String pno) {
-        byte[] pdfBytes = shippingService.printLabel(pno);
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_PDF);
-        headers.setContentDispositionFormData("attachment", "label-" + pno + ".pdf");
-        headers.setContentLength(pdfBytes.length);
+        byte[] labelBytes = shippingService.printLabel(pno);
 
         return ResponseEntity.ok()
-                .headers(headers)
-                .body(pdfBytes);
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"label-" + pno + ".pdf\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-cache, no-store, must-revalidate")
+                .contentType(MediaType.APPLICATION_PDF)
+                .contentLength(labelBytes.length)
+                .body(labelBytes);
     }
-
 
     @PostMapping("/notify-courier")
     @Operation(summary = "Notify Flash Express courier for pickup")
@@ -70,7 +73,6 @@ public class AdminShippingController {
 
         return ResponseEntity.ok(ApiResponse.success("Courier notified successfully", response));
     }
-
 
     @GetMapping("/track/{pno}")
     @Operation(summary = "Track a Flash Express parcel")
@@ -85,7 +87,6 @@ public class AdminShippingController {
         int count = shippingService.getPendingParcelCount();
         return ResponseEntity.ok(ApiResponse.success("Parcel count retrieved", count));
     }
-    
 
     @PostMapping("/cancel/{pno}")
     public ResponseEntity<ApiResponse<Map<String, Object>>> cancelByPno(@PathVariable String pno) {
@@ -144,5 +145,38 @@ public class AdminShippingController {
 
         private int estimateParcelNumber = 1;
         private String remark;
+    }
+
+    @GetMapping("/bulk-track")
+    @Operation(summary = "Get live Flash states for all active orders in one call")
+    public ResponseEntity<ApiResponse<Map<String, Integer>>> bulkTrack() {
+
+        List<Order> active = orderRepository.findActiveFlashOrders(
+                List.of(OrderStatus.DELIVERED, OrderStatus.CANCELLED,
+                        OrderStatus.RETURNED, OrderStatus.REFUNDED, OrderStatus.FAILED)
+        );
+
+        Map<String, Integer> result = new ConcurrentHashMap<>();
+        List<CompletableFuture<Void>> futures = active.stream()
+                .map(order -> CompletableFuture.runAsync(() -> {
+            try {
+                FlashTrackingResponse flash = shippingService.trackOrder(order.getTrackingNumber());
+                if (flash != null && flash.getState() != null) {
+                    order.setFlashState(flash.getState());
+                    orderRepository.save(order);
+                    result.put(order.getOrderNumber(), flash.getState());
+                    if (flash.getState() == 5 || flash.getState() == 7) {
+                        orderService.syncFlashDeliveryStatus(order.getTrackingNumber());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Bulk track failed for PNO={}: {}", order.getTrackingNumber(), e.getMessage());
+            }
+        }))
+                .collect(Collectors.toList());
+
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        return ResponseEntity.ok(ApiResponse.success("Bulk track complete", result));
     }
 }

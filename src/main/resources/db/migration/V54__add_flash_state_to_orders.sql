@@ -1,0 +1,1 @@
+ALTER TABLE orders ADD COLUMN flash_state INT NULL;

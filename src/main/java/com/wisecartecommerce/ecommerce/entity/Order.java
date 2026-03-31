@@ -61,6 +61,9 @@ public class Order {
     @JoinColumn(name = "user_id", nullable = true)
     private User user;
 
+    @Column(name = "flash_state")
+    private Integer flashState;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default

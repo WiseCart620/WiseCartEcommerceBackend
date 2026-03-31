@@ -23,4 +23,7 @@ public interface NotificationService {
 
     void createAdminNotification(String title, String message, String type,
             Long referenceId, String referenceType);
+
+    void createOrderNotification(User user, String title, String message,
+            Long referenceId, String imageUrl, int totalItems);
 }

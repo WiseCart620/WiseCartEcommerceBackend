@@ -285,13 +285,9 @@ public class OrderServiceImpl implements OrderService {
             cartRepository.save(cart);
 
             emailService.sendOrderConfirmationEmail(saved);
-            notificationService.createNotification(
-                    user,
-                    "Order Placed Successfully",
-                    "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
-                    "ORDER",
-                    saved.getId(),
-                    "ORDER");
+            sendOrderStatusNotification(saved,
+                    "Order Placed Successfully ✅",
+                    "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
             notificationService.createAdminNotification(
                     "New Order Received",
                     "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
@@ -473,10 +469,9 @@ public class OrderServiceImpl implements OrderService {
         cartRepository.save(cart);
 
         emailService.sendOrderConfirmationEmail(saved);
-        notificationService.createNotification(user,
-                "Order Placed Successfully",
-                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.",
-                "ORDER", saved.getId(), "ORDER");
+        sendOrderStatusNotification(saved,
+                "Order Placed Successfully ✅",
+                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
         notificationService.createAdminNotification(
                 "New Order Received",
                 "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
@@ -838,7 +833,18 @@ public class OrderServiceImpl implements OrderService {
         if (prev != status) {
             emailService.sendOrderStatusUpdateEmail(updated);
             if (updated.getUser() != null) {
-                String title = "Order Status Updated";
+                String title = switch (status) {
+                    case PROCESSING ->
+                        "Order Confirmed ✅";
+                    case SHIPPED ->
+                        "Order Shipped 🚚";
+                    case DELIVERED ->
+                        "Order Delivered 📦";
+                    case CANCELLED ->
+                        "Order Cancelled";
+                    default ->
+                        "Order Update";
+                };
                 String message = switch (status) {
                     case PROCESSING ->
                         "Your order #" + updated.getOrderNumber() + " is now being processed.";
@@ -851,8 +857,7 @@ public class OrderServiceImpl implements OrderService {
                     default ->
                         "Your order #" + updated.getOrderNumber() + " status changed to " + status.name();
                 };
-                notificationService.createNotification(
-                        updated.getUser(), title, message, "ORDER", updated.getId(), "ORDER");
+                sendOrderStatusNotification(updated, title, message);
             }
         }
         log.info("Order {} status: {} → {}", order.getOrderNumber(), prev, status);
@@ -1096,6 +1101,7 @@ public class OrderServiceImpl implements OrderService {
                 .notes(order.getNotes())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
+                .flashState(order.getFlashState())
                 .build();
     }
 
@@ -1203,9 +1209,8 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public CustomerTrackingResponse getCustomerTracking(String orderNumber) {
-        // 1. Load and verify ownership
         User user = getCurrentUser();
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderNumber));
@@ -1215,20 +1220,14 @@ public class OrderServiceImpl implements OrderService {
         }
 
         String pno = order.getTrackingNumber();
-
-        // 2. Build base response — always returned even without a PNO
         CustomerTrackingResponse.CustomerTrackingResponseBuilder builder = CustomerTrackingResponse.builder()
                 .orderNumber(order.getOrderNumber())
                 .trackingNumber(pno)
                 .shippingCarrier(order.getShippingCarrier())
                 .orderStatus(order.getStatus());
-
-        // 3. If no PNO yet (order still being packed), return without Flash data
         if (pno == null || pno.isBlank()) {
             return builder.flashTracking(null).build();
         }
-
-        // 4. Fetch live Flash tracking
         try {
             FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
 
@@ -1244,12 +1243,110 @@ public class OrderServiceImpl implements OrderService {
 
             builder.flashTracking(flashTracking);
 
+            // ── Auto-sync delivery/return status from Flash ───────────────────────
+            if (flashData.getState() != null
+                    && (flashData.getState() == 5 || flashData.getState() == 7)) {
+                syncFlashDeliveryStatus(pno);
+            }
+
         } catch (Exception e) {
-            // Flash API unavailable — still return order info, just no live tracking
             log.warn("Flash tracking unavailable for PNO={}: {}", pno, e.getMessage());
             builder.flashTracking(null);
         }
 
         return builder.build();
+    }
+
+    private void sendOrderStatusNotification(Order order, String title, String message) {
+        if (order.getUser() == null) {
+            return;
+        }
+
+        String imageUrl = order.getItems().stream()
+                .filter(i -> !i.isAddon())
+                .findFirst()
+                .map(i -> {
+                    if (i.getVariation() != null
+                            && i.getVariation().getImageUrl() != null
+                            && !i.getVariation().getImageUrl().isBlank()) {
+                        return i.getVariation().getImageUrl();
+                    }
+                    return i.getProduct().getImageUrl();
+                })
+                .orElse(null);
+
+        int totalItems = (int) order.getItems().stream()
+                .filter(i -> !i.isAddon())
+                .count();
+
+        notificationService.createOrderNotification(
+                order.getUser(), title, message,
+                order.getId(), imageUrl, totalItems);
+    }
+
+    @Override
+    @Transactional
+    public void syncFlashDeliveryStatus(String pno) {
+        Order order = orderRepository.findByTrackingNumber(pno)
+                .orElseGet(() -> orderRepository.findByOrderNumber(pno).orElse(null));
+        if (order == null) {
+            return;
+        }
+
+        // Already in a terminal state — nothing to do
+        if (order.getStatus() == OrderStatus.DELIVERED
+                || order.getStatus() == OrderStatus.CANCELLED
+                || order.getStatus() == OrderStatus.RETURNED) {
+            return;
+        }
+
+        try {
+            FlashTrackingResponse flash = flashShippingService.trackOrder(pno);
+            if (flash == null || flash.getState() == null) {
+                return;
+            }
+
+            int state = flash.getState();
+
+            // ── State 5 = Delivered ───────────────────────────────────────────
+            if (state == 5) {
+                order.setStatus(OrderStatus.DELIVERED);
+                order.setDeliveredAt(LocalDateTime.now());
+
+                boolean isCod = "cod".equalsIgnoreCase(order.getPaymentMethod());
+                if (isCod) {
+                    order.setPaymentStatus(PaymentStatus.COMPLETED);
+                    order.getPayments().stream()
+                            .filter(p -> p.getStatus() != PaymentStatus.COMPLETED)
+                            .forEach(p -> {
+                                p.setStatus(PaymentStatus.COMPLETED);
+                                p.setCompletedAt(LocalDateTime.now());
+                                paymentRepository.save(p);
+                            });
+                    log.info("COD payment completed on delivery for order {}", order.getOrderNumber());
+                }
+
+                Order saved = orderRepository.save(order);
+                emailService.sendOrderStatusUpdateEmail(saved);
+                sendOrderStatusNotification(saved,
+                        "Order Delivered 📦",
+                        "Your order #" + saved.getOrderNumber() + " has been delivered. "
+                        + (isCod ? "Thank you for your payment!" : "Enjoy!"));
+                log.info("Order {} auto-marked DELIVERED via Flash state 5", order.getOrderNumber());
+            }
+
+            // ── State 7 = Returned to sender ──────────────────────────────────
+            if (state == 7) {
+                order.setStatus(OrderStatus.RETURNED);
+                Order saved = orderRepository.save(order);
+                sendOrderStatusNotification(saved,
+                        "Order Returned",
+                        "Your order #" + saved.getOrderNumber() + " is being returned to sender.");
+                log.info("Order {} auto-marked RETURNED via Flash state 7", order.getOrderNumber());
+            }
+
+        } catch (Exception e) {
+            log.warn("syncFlashDeliveryStatus failed for PNO={}: {}", pno, e.getMessage());
+        }
     }
 }

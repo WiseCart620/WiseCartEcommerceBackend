@@ -57,4 +57,7 @@ public interface OrderService {
     OrderResponse trackGuestOrder(String orderNumber, String email);
 
     OrderResponse createOrderForUser(User user, OrderRequest request);
+
+    void syncFlashDeliveryStatus(String pno);
+    
 }

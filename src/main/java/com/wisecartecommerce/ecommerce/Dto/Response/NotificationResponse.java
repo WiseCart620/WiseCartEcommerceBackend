@@ -1,8 +1,11 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import lombok.*;
-
 import java.time.LocalDateTime;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @NoArgsConstructor
@@ -18,4 +21,6 @@ public class NotificationResponse {
     private Long referenceId;
     private String referenceType;
     private LocalDateTime createdAt;
+    private String imageUrl;
+    private Integer totalItems;
 }

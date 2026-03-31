@@ -111,6 +111,8 @@ public class NotificationServiceImpl implements NotificationService {
                 .read(notification.isRead())
                 .referenceId(notification.getReferenceId())
                 .referenceType(notification.getReferenceType())
+                .imageUrl(notification.getImageUrl())
+                .totalItems(notification.getTotalItems())
                 .createdAt(notification.getCreatedAt())
                 .build();
     }
@@ -124,5 +126,23 @@ public class NotificationServiceImpl implements NotificationService {
             createNotification(admin, title, message, type, referenceId, referenceType);
         }
         log.info("Created {} notification for {} admin(s)", type, admins.size());
+    }
+
+    @Override
+    @Transactional
+    public void createOrderNotification(User user, String title, String message,
+            Long referenceId, String imageUrl, int totalItems) {
+        Notification notification = Notification.builder()
+                .user(user)
+                .title(title)
+                .message(message)
+                .type("ORDER")
+                .referenceId(referenceId)
+                .referenceType("ORDER_STATUS")
+                .imageUrl(imageUrl)
+                .totalItems(totalItems)
+                .build();
+        notificationRepository.save(notification);
+        log.info("Created ORDER notification with image for user: {}", user.getEmail());
     }
 }

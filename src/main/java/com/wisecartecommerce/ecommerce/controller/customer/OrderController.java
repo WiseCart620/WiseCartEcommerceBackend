@@ -1,6 +1,7 @@
 package com.wisecartecommerce.ecommerce.controller.customer;
 
-import lombok.RequiredArgsConstructor;
+import java.util.List;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -8,7 +9,13 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
@@ -24,8 +31,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/customer/orders")
@@ -74,19 +80,19 @@ public class OrderController {
     }
 
     /**
-     * Live tracking endpoint via Flash Express.
-     * Uses the Flash PNO (e.g. PTHXXXXXXXX) as the tracking number.
-     * Falls back gracefully if tracking number is not yet assigned.
+     * Live tracking endpoint via Flash Express. Uses the Flash PNO (e.g.
+     * PTHXXXXXXXX) as the tracking number. Falls back gracefully if tracking
+     * number is not yet assigned.
      */
     @GetMapping("/{orderNumber}/track")
-    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN')") 
+    @PreAuthorize("hasRole('CUSTOMER') or hasRole('ADMIN')")
     @Operation(summary = "Track order via Flash Express")
     public ResponseEntity<ApiResponse<FlashTrackingResponse>> trackOrder(
             @PathVariable String orderNumber) {
 
         Order order = orderRepository.findByOrderNumber(orderNumber)
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Order not found: " + orderNumber));
+                "Order not found: " + orderNumber));
 
         String trackingNumber = order.getTrackingNumber();
 
@@ -96,6 +102,13 @@ public class OrderController {
         }
 
         FlashTrackingResponse tracking = shippingService.trackOrder(trackingNumber);
+
+        // ── Auto-sync order status when Flash says Delivered or Returned ──────
+        if (tracking != null && tracking.getState() != null
+                && (tracking.getState() == 5 || tracking.getState() == 7)) {
+            orderService.syncFlashDeliveryStatus(trackingNumber);
+        }
+
         return ResponseEntity.ok(ApiResponse.success("Tracking info retrieved", tracking));
     }
 
