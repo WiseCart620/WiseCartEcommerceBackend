@@ -30,6 +30,7 @@ public class CouponRequest {
     private BigDecimal maximumDiscountAmount;
     private Integer maxUsageCount;
     private Integer maxUsagePerUser;
+    private Integer minimumProductQuantity;
 
     @NotNull(message = "Start date is required")
     private LocalDateTime startDate;

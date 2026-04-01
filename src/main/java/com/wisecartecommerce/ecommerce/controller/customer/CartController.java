@@ -80,9 +80,9 @@ public class CartController {
     }
 
     @DeleteMapping("/remove-coupon")
-    @Operation(summary = "Remove coupon from cart")
-    public ResponseEntity<ApiResponse<CartResponse>> removeCoupon() {
-        CartResponse response = cartService.removeCoupon();
+    public ResponseEntity<ApiResponse<CartResponse>> removeCoupon(
+            @RequestParam(required = false) String couponCode) {
+        CartResponse response = cartService.removeCoupon(couponCode);
         return ResponseEntity.ok(ApiResponse.success("Coupon removed", response));
     }
 

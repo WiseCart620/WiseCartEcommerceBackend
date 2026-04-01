@@ -86,6 +86,7 @@ public class OrderResponse {
         private String paymentGateway;
         private LocalDateTime createdAt;
         private LocalDateTime completedAt;
+        private String mayaPaymentId;
     }
 
     @Data

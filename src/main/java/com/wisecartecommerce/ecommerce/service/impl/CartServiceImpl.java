@@ -367,8 +367,7 @@ public class CartServiceImpl implements CartService {
         cart.setSubtotal(BigDecimal.ZERO);
         cart.setTotal(BigDecimal.ZERO);
         cart.setDiscountAmount(BigDecimal.ZERO);
-        cart.setCouponCode(null);
-        cart.setCouponDiscountAmount(BigDecimal.ZERO);
+        cart.clearCoupon();
         cartRepository.save(cart);
 
         log.info("Cart cleared for user {}", user.getEmail());
@@ -396,6 +395,9 @@ public class CartServiceImpl implements CartService {
             return mapToCartResponse(cart);
         }
 
+        if (cart.getCouponCodes() != null && cart.getCouponCodes().contains(couponCode.trim().toUpperCase())) {
+            throw new CustomException("Coupon '" + couponCode + "' is already applied to your cart.");
+        }
         applyCouponToCart(cart, coupon);
         Cart savedCart = cartRepository.save(cart);
 
@@ -405,16 +407,45 @@ public class CartServiceImpl implements CartService {
 
     @Override
     @Transactional
-    public CartResponse removeCoupon() {
+    public CartResponse removeCoupon(String couponCode) {
         User user = getCurrentUser();
         Cart cart = cartRepository.findByUserId(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
-        cart.clearCoupon();
+        if (couponCode == null || couponCode.isBlank()) {
+            cart.clearCoupon(); // remove all
+        } else {
+            cart.removeCoupon(couponCode);
+            // Recalculate total discount from remaining coupons
+            BigDecimal totalDiscount = BigDecimal.ZERO;
+            for (String code : cart.getCouponCodes()) {
+                Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
+                if (c != null) {
+                    // reuse your existing discount calc logic
+                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
+                }
+            }
+            cart.setCouponDiscountAmount(totalDiscount);
+            cart.calculateTotals();
+        }
         Cart savedCart = cartRepository.save(cart);
 
         log.info("Removed coupon from cart for user {}", user.getEmail());
         return mapToCartResponse(savedCart);
+    }
+
+    private BigDecimal calculateDiscount(Coupon coupon, BigDecimal subtotal) {
+        return switch (coupon.getType()) {
+            case PERCENTAGE -> {
+                BigDecimal d = subtotal.multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                yield coupon.getMaximumDiscountAmount() != null && d.compareTo(coupon.getMaximumDiscountAmount()) > 0
+                ? coupon.getMaximumDiscountAmount() : d;
+            }
+            case FIXED_AMOUNT ->
+                coupon.getDiscountValue().min(subtotal);
+            case FREE_SHIPPING ->
+                BigDecimal.ZERO;
+        };
     }
 
     @Override
@@ -769,6 +800,21 @@ public class CartServiceImpl implements CartService {
             throw new CustomException(
                     "Minimum purchase amount of " + coupon.getMinimumPurchaseAmount() + " required for this coupon");
         }
+        int minQty = coupon.getMinimumProductQuantity() != null ? coupon.getMinimumProductQuantity() : 0;
+        if (minQty > 0) {
+            java.util.Set<Long> applicable = coupon.getApplicableProducts();
+            int qualifyingQty = cart.getItems().stream()
+                    .filter(item -> applicable == null || applicable.isEmpty()
+                    || applicable.contains(item.getProduct().getId()))
+                    .mapToInt(com.wisecartecommerce.ecommerce.entity.CartItem::getQuantity)
+                    .sum();
+            if (qualifyingQty < minQty) {
+                throw new CustomException(
+                        "This coupon requires at least " + minQty + " qualifying item(s) in your cart. "
+                        + "You currently have " + qualifyingQty + ".");
+            }
+        }
+
         if (coupon.getApplicableProducts() != null && !coupon.getApplicableProducts().isEmpty()) {
             boolean hasApplicableProduct = cart.getItems().stream()
                     .anyMatch(item -> coupon.getApplicableProducts().contains(item.getProduct().getId()));
@@ -816,8 +862,15 @@ public class CartServiceImpl implements CartService {
                 break;
         }
 
-        cart.setCouponCode(coupon.getCode());
-        cart.setCouponDiscountAmount(discountAmount);
+        if (cart.getCouponCodes() == null) {
+            cart.setCouponCodes(new ArrayList<>());
+        }
+        if (!cart.getCouponCodes().contains(coupon.getCode())) {
+            cart.getCouponCodes().add(coupon.getCode());
+        }
+        BigDecimal totalDiscount = (cart.getCouponDiscountAmount() != null ? cart.getCouponDiscountAmount() : BigDecimal.ZERO)
+                .add(discountAmount);
+        cart.setCouponDiscountAmount(totalDiscount);
         cart.calculateTotals();
     }
 
@@ -834,7 +887,9 @@ public class CartServiceImpl implements CartService {
                 .uniqueItemCount(cart.getUniqueItemCount())
                 .subtotal(cart.getSubtotal())
                 .discountAmount(cart.getDiscountAmount())
-                .couponCode(cart.getCouponCode())
+                .couponCodes(cart.getCouponCodes())
+                .couponCode(cart.getCouponCodes() != null && !cart.getCouponCodes().isEmpty()
+                        ? cart.getCouponCodes().get(0) : null)
                 .shippingAmount(cart.getShippingAmount())
                 .taxAmount(cart.getTaxAmount())
                 .total(cart.getTotal())

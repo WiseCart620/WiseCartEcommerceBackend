@@ -26,6 +26,7 @@ public class CartResponse {
     private BigDecimal discountAmount;
     private BigDecimal discountPercentage;
     private String couponCode;
+    private List<String> couponCodes;
     private String couponDescription;
     private BigDecimal shippingAmount;
     private BigDecimal taxAmount;

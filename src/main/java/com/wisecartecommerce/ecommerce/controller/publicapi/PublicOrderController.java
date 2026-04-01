@@ -17,6 +17,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -52,13 +53,35 @@ public class PublicOrderController {
             @RequestBody Map<String, Object> body) {
         String couponCode = (String) body.get("couponCode");
         BigDecimal subtotal = new BigDecimal(body.get("subtotal").toString());
-        CouponValidationResult result = couponValidator.validate(couponCode, subtotal, null);
+
+        // Build a lightweight item list for qty check
+        List<com.wisecartecommerce.ecommerce.entity.CartItem> cartItems = null;
+        Object itemsObj = body.get("items");
+        if (itemsObj instanceof List<?> rawItems && !rawItems.isEmpty()) {
+            cartItems = new java.util.ArrayList<>();
+            for (Object raw : rawItems) {
+                if (raw instanceof Map<?, ?> m) {
+                    Long productId = Long.parseLong(m.get("productId").toString());
+                    int quantity = Integer.parseInt(m.get("quantity").toString());
+                    com.wisecartecommerce.ecommerce.entity.Product p
+                            = new com.wisecartecommerce.ecommerce.entity.Product();
+                    p.setId(productId);
+                    com.wisecartecommerce.ecommerce.entity.CartItem ci
+                            = new com.wisecartecommerce.ecommerce.entity.CartItem();
+                    ci.setProduct(p);
+                    ci.setQuantity(quantity);
+                    cartItems.add(ci);
+                }
+            }
+        }
+
+        CouponValidationResult result = couponValidator.validate(couponCode, subtotal, null, cartItems);
         Map<String, Object> data = Map.of(
-                "couponCode",    result.getCoupon().getCode(),
+                "couponCode", result.getCoupon().getCode(),
                 "discountAmount", result.getDiscountAmount(),
                 "discountValue", result.getCoupon().getDiscountValue(),
-                "freeShipping",  result.isFreeShipping(),
-                "type",          result.getCoupon().getType());
+                "freeShipping", result.isFreeShipping(),
+                "type", result.getCoupon().getType());
         return ResponseEntity.ok(ApiResponse.success("Coupon is valid", data));
     }
 }

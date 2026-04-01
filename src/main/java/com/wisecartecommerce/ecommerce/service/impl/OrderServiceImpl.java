@@ -50,6 +50,7 @@ import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductVariationRepository;
 import com.wisecartecommerce.ecommerce.service.EmailService;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
+import com.wisecartecommerce.ecommerce.service.MayaRefundService;
 import com.wisecartecommerce.ecommerce.service.NotificationService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
 import com.wisecartecommerce.ecommerce.service.RateLimitService;
@@ -76,6 +77,7 @@ public class OrderServiceImpl implements OrderService {
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
     private final PaymentRepository paymentRepository;
+    private final MayaRefundService mayaRefundService;
 
     // ── Services ───────────────────────────────────────────────────────────────
     private final EmailService emailService;
@@ -174,7 +176,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (couponCode != null && !couponCode.isBlank()) {
             try {
-                couponResult = couponValidator.validate(couponCode, subtotal, user.getId());
+                couponResult = couponValidator.validate(couponCode, subtotal, user.getId(), cart.getItems());
                 discountAmount = couponResult.getDiscountAmount();
                 couponFreeShipping = couponResult.isFreeShipping();
                 log.info("Coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
@@ -280,8 +282,7 @@ public class OrderServiceImpl implements OrderService {
             cart.setSubtotal(BigDecimal.ZERO);
             cart.setTotal(BigDecimal.ZERO);
             cart.setDiscountAmount(BigDecimal.ZERO);
-            cart.setCouponCode(null);
-            cart.setCouponDiscountAmount(BigDecimal.ZERO);
+            cart.clearCoupon();
             cartRepository.save(cart);
 
             emailService.sendOrderConfirmationEmail(saved);
@@ -371,7 +372,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (couponCode != null && !couponCode.isBlank()) {
             try {
-                couponResult = couponValidator.validate(couponCode, subtotal, user.getId());
+                couponResult = couponValidator.validate(couponCode, subtotal, user.getId(), cart.getItems());
                 discountAmount = couponResult.getDiscountAmount();
                 couponFreeShipping = couponResult.isFreeShipping();
             } catch (CustomException e) {
@@ -459,13 +460,11 @@ public class OrderServiceImpl implements OrderService {
             recordCouponUsage(couponResult.getCoupon(), user, null, saved);
         }
 
-        // Clear the cart
         cart.getItems().clear();
         cart.setSubtotal(BigDecimal.ZERO);
         cart.setTotal(BigDecimal.ZERO);
         cart.setDiscountAmount(BigDecimal.ZERO);
-        cart.setCouponCode(null);
-        cart.setCouponDiscountAmount(BigDecimal.ZERO);
+        cart.clearCoupon();
         cartRepository.save(cart);
 
         emailService.sendOrderConfirmationEmail(saved);
@@ -575,7 +574,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (couponCode != null && !couponCode.isBlank()) {
             try {
-                couponResult = couponValidator.validate(couponCode, subtotal, null); // null = guest
+                couponResult = couponValidator.validate(couponCode, subtotal, null, null);
                 discountAmount = couponResult.getDiscountAmount();
                 couponFreeShipping = couponResult.isFreeShipping();
                 log.info("Guest coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
@@ -1160,6 +1159,7 @@ public class OrderServiceImpl implements OrderService {
         return OrderResponse.PaymentResponse.builder()
                 .id(payment.getId())
                 .transactionId(payment.getTransactionId())
+                .mayaPaymentId(payment.getMayaPaymentId())
                 .amount(payment.getAmount())
                 .status(payment.getStatus())
                 .paymentMethod(payment.getPaymentMethod())
@@ -1348,5 +1348,229 @@ public class OrderServiceImpl implements OrderService {
         } catch (Exception e) {
             log.warn("syncFlashDeliveryStatus failed for PNO={}: {}", pno, e.getMessage());
         }
+    }
+
+    @Transactional
+    public OrderResponse requestMayaRefund(Long orderId, String reason, BigDecimal customAmount) {
+        User user = getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only request refunds for your own orders");
+        }
+
+        boolean isCancelled = order.getStatus() == OrderStatus.CANCELLED;
+        boolean isReturned = order.getStatus() == OrderStatus.RETURNED;
+        if (!isCancelled && !isReturned) {
+            throw new CustomException("Refund only available for cancelled or returned orders");
+        }
+
+        if ("cod".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new CustomException("COD orders require manual cash refund — please contact support");
+        }
+
+        // Find the completed payment record
+        Payment payment = paymentRepository
+                .findFirstByOrderIdAndStatusOrderByCreatedAtDesc(orderId, PaymentStatus.COMPLETED)
+                .orElseThrow(() -> new CustomException("No completed payment found for this order"));
+
+        // ✅ Use transactionReferenceNo (stored as mayaPaymentId) for refund
+        String transactionReferenceNo = payment.getMayaPaymentId();
+        if (transactionReferenceNo == null) {
+            throw new CustomException("Maya transaction reference not found — contact support");
+        }
+
+        if (payment.getStatus() == PaymentStatus.REFUNDED) {
+            throw new CustomException("This order has already been refunded");
+        }
+
+        // Check if refund is allowed based on transaction date
+        if (order.getCreatedAt() != null) {
+            LocalDateTime transactionDate = order.getCreatedAt();
+            LocalDateTime refundAvailableFrom = transactionDate.toLocalDate().plusDays(1).atStartOfDay();
+
+            if (LocalDateTime.now().isBefore(refundAvailableFrom)) {
+                throw new CustomException(
+                        "Refunds are only available starting the day after the transaction. "
+                        + "For same-day cancellations, please use void instead. "
+                        + "Available from: " + refundAvailableFrom
+                );
+            }
+
+            LocalDateTime refundDeadline = transactionDate.toLocalDate().plusDays(180).atStartOfDay();
+            if (LocalDateTime.now().isAfter(refundDeadline)) {
+                throw new CustomException(
+                        "Refund window has expired (180 days from transaction date). "
+                        + "Please contact support for manual refund processing."
+                );
+            }
+        }
+
+        BigDecimal refundAmount = customAmount != null ? customAmount : order.getFinalAmount();
+
+        if (refundAmount.compareTo(payment.getAmount()) > 0) {
+            throw new CustomException("Refund amount cannot exceed original payment amount of ₱" + payment.getAmount());
+        }
+
+        try {
+            // ✅ Call Maya refund with transactionReferenceNo
+            Map<String, Object> refundResponse = mayaRefundService.refund(transactionReferenceNo, refundAmount, reason);
+
+            payment.setStatus(PaymentStatus.REFUNDED);
+            payment.setRefundAmount(refundAmount);
+            payment.setRefundReason(reason);
+            payment.setRefundedAt(LocalDateTime.now());
+
+            if (refundResponse != null) {
+                payment.setGatewayResponse(refundResponse.toString());
+            }
+
+            paymentRepository.save(payment);
+
+            order.setPaymentStatus(PaymentStatus.REFUNDED);
+            Order saved = orderRepository.save(order);
+
+            emailService.sendOrderStatusUpdateEmail(saved);
+            sendOrderStatusNotification(saved,
+                    "Refund Processed",
+                    "Your refund of ₱" + refundAmount + " for order #" + order.getOrderNumber()
+                    + " has been processed."
+            );
+
+            log.info("Maya refund processed: order={} amount={} transactionRef={}",
+                    order.getOrderNumber(), refundAmount, transactionReferenceNo);
+
+            return mapToOrderResponse(saved);
+
+        } catch (Exception e) {
+            log.error("Maya refund failed for order {}: {}", order.getOrderNumber(), e.getMessage(), e);
+            payment.setStatus(PaymentStatus.FAILED);
+            payment.setGatewayResponse("Refund failed: " + e.getMessage());
+            paymentRepository.save(payment);
+            throw new CustomException("Refund failed: " + e.getMessage());
+        }
+    }
+
+    @Transactional
+    public OrderResponse requestMayaVoid(Long orderId, String reason) {
+        User user = getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only cancel your own orders");
+        }
+
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING) {
+            throw new CustomException("Order cannot be voided once it has been shipped or delivered");
+        }
+
+        if ("cod".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new CustomException("COD orders require manual cancellation — please contact support");
+        }
+
+        // ✅ Get the transaction reference from the payment record
+        Payment payment = paymentRepository
+                .findFirstByOrderIdAndStatusOrderByCreatedAtDesc(orderId, PaymentStatus.COMPLETED)
+                .orElseThrow(() -> new CustomException("No completed payment found for this order"));
+
+        String transactionReferenceNo = payment.getMayaPaymentId();
+        if (transactionReferenceNo == null) {
+            throw new CustomException("Maya transaction reference not found — contact support");
+        }
+
+        // ✅ Check if void is allowed (same day before midnight GMT+8)
+        if (order.getCreatedAt() != null) {
+            LocalDateTime transactionDate = order.getCreatedAt();
+            LocalDateTime voidDeadline = transactionDate.toLocalDate().plusDays(1).atStartOfDay();
+
+            if (LocalDateTime.now().isAfter(voidDeadline)) {
+                log.info("Void deadline passed for order {}, using refund instead", order.getOrderNumber());
+                return requestMayaRefund(orderId, reason, null);
+            }
+        }
+
+        log.info("Using transactionReferenceNo for void: {} for order {}", transactionReferenceNo, order.getOrderNumber());
+
+        try {
+            // ✅ Call P3 void endpoint
+            Map<String, Object> voidResponse = mayaRefundService.voidPayment(transactionReferenceNo, reason);
+
+            // Update local records
+            payment.setStatus(PaymentStatus.REFUNDED);
+            payment.setRefundAmount(order.getFinalAmount());
+            payment.setRefundReason(reason);
+            payment.setRefundedAt(LocalDateTime.now());
+
+            if (voidResponse != null) {
+                payment.setGatewayResponse(voidResponse.toString());
+            }
+
+            paymentRepository.save(payment);
+
+            order.setStatus(OrderStatus.CANCELLED);
+            order.setCancelledAt(LocalDateTime.now());
+            order.setPaymentStatus(PaymentStatus.REFUNDED);
+            restoreStock(order);
+
+            Order saved = orderRepository.save(order);
+
+            emailService.sendOrderStatusUpdateEmail(saved);
+            sendOrderStatusNotification(saved,
+                    "Order Cancelled & Voided",
+                    "Your order #" + order.getOrderNumber() + " has been cancelled and the payment hold has been released."
+            );
+
+            log.info("Maya void processed: order={} amount={} transactionRef={}",
+                    order.getOrderNumber(), order.getFinalAmount(), transactionReferenceNo);
+
+            return mapToOrderResponse(saved);
+
+        } catch (Exception e) {
+            log.error("Maya void failed for order {}: {}", order.getOrderNumber(), e.getMessage(), e);
+            throw new CustomException("Void failed: " + e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse cancelMayaPayment(Long orderId, String reason, BigDecimal amount) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        User user = getCurrentUser();
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only cancel your own orders");
+        }
+
+        // Check if order is in a cancellable state
+        if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING) {
+            throw new CustomException("Order cannot be cancelled once it has been shipped or delivered");
+        }
+
+        // COD orders require manual processing
+        if ("cod".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new CustomException("COD orders require manual cancellation — please contact support");
+        }
+
+        // Check if it's a same-day transaction
+        if (order.getCreatedAt() != null) {
+            LocalDateTime transactionDate = order.getCreatedAt();
+            LocalDateTime nextDayStart = transactionDate.toLocalDate().plusDays(1).atStartOfDay();
+
+            if (LocalDateTime.now().isBefore(nextDayStart)) {
+                // Same day - use void
+                log.info("Using void for same-day cancellation: orderId={}", orderId);
+                return requestMayaVoid(orderId, reason);
+            } else {
+                // Next day or later - use refund
+                log.info("Using refund for next-day cancellation: orderId={}", orderId);
+                return requestMayaRefund(orderId, reason, amount);
+            }
+        }
+
+        // Fallback to refund if date is null
+        return requestMayaRefund(orderId, reason, amount);
     }
 }

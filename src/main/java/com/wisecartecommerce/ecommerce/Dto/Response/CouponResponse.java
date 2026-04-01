@@ -22,6 +22,7 @@ public class CouponResponse {
     private Integer maxUsageCount;
     private Integer currentUsageCount;
     private Integer maxUsagePerUser;
+    private Integer minimumProductQuantity;
     private LocalDateTime startDate;
     private LocalDateTime expirationDate;
     private Boolean active;
@@ -29,4 +30,5 @@ public class CouponResponse {
     private Set<Long> applicableCategories;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    
 }

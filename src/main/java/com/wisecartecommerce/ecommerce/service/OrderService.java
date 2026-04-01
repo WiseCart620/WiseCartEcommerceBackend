@@ -1,5 +1,6 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -59,5 +60,10 @@ public interface OrderService {
     OrderResponse createOrderForUser(User user, OrderRequest request);
 
     void syncFlashDeliveryStatus(String pno);
+
+    OrderResponse requestMayaRefund(Long orderId, String reason, BigDecimal customAmount);
+
+    OrderResponse requestMayaVoid(Long orderId, String reason);
     
+    OrderResponse cancelMayaPayment(Long orderId, String reason, BigDecimal amount);
 }

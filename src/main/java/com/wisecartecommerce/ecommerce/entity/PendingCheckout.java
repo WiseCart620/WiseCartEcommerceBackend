@@ -60,6 +60,9 @@ public class PendingCheckout {
     private String notes;
     private Long orderId;
 
+    @Column(name = "maya_payment_id", length = 100)
+    private String mayaPaymentId;
+
     @Column(nullable = false)
     private BigDecimal amount;
 
@@ -77,4 +80,5 @@ public class PendingCheckout {
     public enum PendingCheckoutStatus {
         PENDING, COMPLETED, FAILED, EXPIRED
     }
+
 }

@@ -20,6 +20,7 @@ import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.CartRepository;
+import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.repository.PendingCheckoutRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -34,11 +35,11 @@ public class MayaCheckoutService {
     private final PendingCheckoutRepository pendingCheckoutRepository;
     private final CartRepository cartRepository;
     private final OrderService orderService;
+    private final PaymentRepository paymentRepository;
 
     private static final BigDecimal VAT_RATE = new BigDecimal("0.12");
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
 
-    // ── Step 1: Frontend calls this when user clicks "Place Order" with Maya ──
     @Transactional
     public String initiateMayaCheckout(MayaInitiateRequest req) {
         User user = getCurrentUser();
@@ -50,7 +51,6 @@ public class MayaCheckoutService {
             throw new CustomException("Cannot checkout with an empty cart");
         }
 
-        // Calculate the total the same way OrderService does
         BigDecimal subtotal = cart.getSubtotal();
         BigDecimal discount = cart.getDiscountAmount() != null ? cart.getDiscountAmount() : BigDecimal.ZERO;
         BigDecimal taxable = subtotal.subtract(discount).max(BigDecimal.ZERO);
@@ -62,15 +62,13 @@ public class MayaCheckoutService {
         } else if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             shipping = BigDecimal.ZERO;
         } else {
-            shipping = new BigDecimal("150.00"); // fallback
+            shipping = new BigDecimal("150.00");
         }
 
         BigDecimal total = taxable.add(shipping).add(tax);
 
-        // Build a unique ref for Maya
         String checkoutRef = "WC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
 
-        // Persist pending checkout so the webhook can recreate the order
         PendingCheckout pending = PendingCheckout.builder()
                 .checkoutRef(checkoutRef)
                 .user(user)
@@ -96,12 +94,11 @@ public class MayaCheckoutService {
 
         pendingCheckoutRepository.save(pending);
 
-        // Call Maya
         Map<String, String> checkoutResult = mayaService.createCheckout(checkoutRef, total);
         String checkoutUrl = checkoutResult.get("redirectUrl");
         String checkoutId = checkoutResult.get("checkoutId");
         pending.setMayaCheckoutUrl(checkoutUrl);
-        pending.setMayaCheckoutId(checkoutId); // ← STORE IT
+        pending.setMayaCheckoutId(checkoutId);
         pendingCheckoutRepository.save(pending);
 
         log.info("Maya checkout initiated: ref={} user={} amount={}", checkoutRef, user.getEmail(), total);
@@ -115,7 +112,7 @@ public class MayaCheckoutService {
 
         if (pending.getStatus() == PendingCheckoutStatus.COMPLETED) {
             log.info("Webhook already processed for ref={}", checkoutRef);
-            return; // idempotent
+            return;
         }
 
         if (pending.getStatus() == PendingCheckoutStatus.EXPIRED
@@ -126,66 +123,99 @@ public class MayaCheckoutService {
             return;
         }
 
-// Fetch Maya checkout details to get the actual payment method used
-        String mayaPaymentMethod = "Maya"; // Default fallback
+        // ── Resolve payment method & extract paymentId ───────────────────────
+        String mayaPaymentMethod = "Maya";
         try {
             Map<String, Object> checkoutDetails = mayaService.getCheckoutDetails(pending.getMayaCheckoutId());
             if (checkoutDetails != null) {
                 log.warn("=== MAYA CHECKOUT DETAILS for ref={} ===: {}", checkoutRef, checkoutDetails);
                 log.warn("Response keys: {}", checkoutDetails.keySet());
 
-                // Check for paymentScheme at root level (this is the main payment method)
+                // Payment scheme at root level
                 if (checkoutDetails.containsKey("paymentScheme")) {
                     mayaPaymentMethod = (String) checkoutDetails.get("paymentScheme");
                     log.warn("Found paymentScheme: {}", mayaPaymentMethod);
                 }
 
-                // Also check paymentDetails for more specific info if needed
+                // Dig into card number for specific brand
                 if (checkoutDetails.containsKey("paymentDetails")) {
-                    Map<String, Object> paymentDetails = (Map<String, Object>) checkoutDetails.get("paymentDetails");
-                    log.warn("Payment details keys: {}", paymentDetails.keySet());
-
-                    if (paymentDetails.containsKey("responses")) {
+                    try {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> paymentDetails = (Map<String, Object>) checkoutDetails.get("paymentDetails");
+                        log.warn("Payment details keys: {}", paymentDetails.keySet());
+                        @SuppressWarnings("unchecked")
                         Map<String, Object> responses = (Map<String, Object>) paymentDetails.get("responses");
-                        if (responses.containsKey("efs")) {
-                            Map<String, Object> efs = (Map<String, Object>) responses.get("efs");
-                            if (efs.containsKey("payer")) {
-                                Map<String, Object> payer = (Map<String, Object>) efs.get("payer");
-                                if (payer.containsKey("fundingInstrument")) {
-                                    Map<String, Object> fundingInstrument = (Map<String, Object>) payer.get("fundingInstrument");
-                                    if (fundingInstrument.containsKey("card")) {
-                                        Map<String, Object> card = (Map<String, Object>) fundingInstrument.get("card");
-                                        if (card.containsKey("cardNumber")) {
-                                            // You could extract card type from card number prefix
-                                            String cardNumber = (String) card.get("cardNumber");
-                                            if (cardNumber != null) {
-                                                if (cardNumber.startsWith("4")) {
-                                                    mayaPaymentMethod = "VISA";
-                                                } else if (cardNumber.startsWith("5")) {
-                                                    mayaPaymentMethod = "Mastercard";
-                                                } else if (cardNumber.startsWith("3")) {
-                                                    mayaPaymentMethod = "JCB";
-                                                }
-                                                log.warn("Detected card from number: {}", mayaPaymentMethod);
-                                            }
-                                        }
-                                    }
-                                }
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> efs = (Map<String, Object>) responses.get("efs");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> payer = (Map<String, Object>) efs.get("payer");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> fundingInstrument = (Map<String, Object>) payer.get("fundingInstrument");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> card = (Map<String, Object>) fundingInstrument.get("card");
+                        String cardNumber = (String) card.get("cardNumber");
+                        if (cardNumber != null) {
+                            if (cardNumber.startsWith("4")) {
+                                mayaPaymentMethod = "VISA";
+                            } else if (cardNumber.startsWith("5")) {
+                                mayaPaymentMethod = "Mastercard";
+                            } else if (cardNumber.startsWith("3")) {
+                                mayaPaymentMethod = "JCB";
                             }
+                            log.warn("Detected card from number: {}", mayaPaymentMethod);
                         }
+                    } catch (Exception ignored) {
                     }
                 }
 
                 log.info("Maya payment method resolved for ref={}: {}", checkoutRef, mayaPaymentMethod);
+
+                // ── Extract Maya paymentId for refunds ────────────────────────
+                // Primary: transactionReferenceNumber at root level
+                // Your logs confirm this field is present: transactionReferenceNumber=e8525301-...
+                try {
+                    String mayaPaymentId = (String) checkoutDetails.get("transactionReferenceNumber");
+
+                    // Fallback: paymentDetails.responses.efs.paymentTransactionReferenceNo
+                    if (mayaPaymentId == null && checkoutDetails.containsKey("paymentDetails")) {
+                        try {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> pd = (Map<String, Object>) checkoutDetails.get("paymentDetails");
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> responses = (Map<String, Object>) pd.get("responses");
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> efs = (Map<String, Object>) responses.get("efs");
+                            mayaPaymentId = (String) efs.get("paymentTransactionReferenceNo");
+                        } catch (Exception ignored) {
+                        }
+                    }
+
+// In handlePaymentSuccess(), after extracting paymentId
+                    if (mayaPaymentId != null) {
+                        pending.setMayaPaymentId(mayaPaymentId);
+                        pendingCheckoutRepository.save(pending);
+                        log.info("Maya paymentId saved: {} for ref={}", mayaPaymentId, checkoutRef);
+
+                        // Also log the checkoutId for reference
+                        log.info("Maya checkoutId: {} for ref={}", pending.getMayaCheckoutId(), checkoutRef);
+                    } else {
+                        log.warn("Maya paymentId not found in response for ref={}", checkoutRef);
+                        // Log full response to see what's available
+                        Map<String, Object> details = mayaService.getCheckoutDetails(pending.getMayaCheckoutId());
+                        log.warn("Full Maya response keys: {}", details != null ? details.keySet() : "null");
+                    }
+                } catch (Exception ex) {
+                    log.warn("Could not extract Maya paymentId for ref={}: {}", checkoutRef, ex.getMessage());
+                }
             }
         } catch (Exception e) {
-            log.warn("Could not fetch Maya payment method for ref={}: {}", checkoutRef, e.getMessage(), e);
+            log.warn("Could not fetch Maya checkout details for ref={}: {}", checkoutRef, e.getMessage(), e);
         }
 
-        // Build OrderRequest
+        // ── Build and create order ────────────────────────────────────────────
         OrderRequest orderRequest = new OrderRequest();
         orderRequest.setPaymentMethod("maya");
-        orderRequest.setMayaPaymentMethod(mayaPaymentMethod); // Set the actual payment method
+        orderRequest.setMayaPaymentMethod(mayaPaymentMethod);
         orderRequest.setNotes(pending.getNotes());
         orderRequest.setShippingFee(pending.getShippingFee());
         orderRequest.setExpressCategory(pending.getExpressCategory());
@@ -212,6 +242,19 @@ public class MayaCheckoutService {
         pending.setStatus(PendingCheckoutStatus.COMPLETED);
         pendingCheckoutRepository.save(pending);
 
+        // ── Link paymentId to Payment record so refunds work ─────────────────
+        if (pending.getMayaPaymentId() != null) {
+            paymentRepository.findFirstByOrderIdOrderByCreatedAtDesc(order.getId())
+                    .ifPresent(payment -> {
+                        payment.setMayaPaymentId(pending.getMayaPaymentId());
+                        paymentRepository.save(payment);
+                        log.info("Maya paymentId linked to Payment record: orderId={} paymentId={}",
+                                order.getId(), pending.getMayaPaymentId());
+                    });
+        } else {
+            log.warn("Maya paymentId is null — refund will not be possible for orderId={}", order.getId());
+        }
+
         log.info("Order created from Maya webhook: orderId={} ref={} paymentMethod={}",
                 order.getId(), checkoutRef, mayaPaymentMethod);
     }
@@ -230,10 +273,8 @@ public class MayaCheckoutService {
         PendingCheckout pending = pendingCheckoutRepository.findByCheckoutRef(checkoutRef)
                 .orElseThrow(() -> new ResourceNotFoundException("Checkout not found"));
 
-        // Actively check Maya's API if still PENDING
         if (pending.getStatus() == PendingCheckoutStatus.PENDING) {
             try {
-                // Use mayaCheckoutId instead of checkoutRef!
                 String mayaStatus = mayaService.getCheckoutStatus(pending.getMayaCheckoutId());
                 log.info("Maya live status for ref={}: mayaId={} status={}",
                         checkoutRef, pending.getMayaCheckoutId(), mayaStatus);
@@ -265,32 +306,4 @@ public class MayaCheckoutService {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
-    private String toReadableMethod(String raw) {
-        if (raw == null) {
-            return "Maya";
-        }
-        String upper = raw.toUpperCase();
-        return switch (upper) {
-            case "VISA" ->
-                "Visa";
-            case "MASTER-CARD", "MASTERCARD", "MASTER" ->
-                "Mastercard";
-            case "JCB" ->
-                "JCB";
-            case "AMEX" ->
-                "Amex";
-            case "CARD" ->
-                "Credit/Debit Card";
-            case "GCASH" ->
-                "GCash";
-            case "GRABPAY" ->
-                "GrabPay";
-            case "PAYMAYA", "MAYA_WALLET" ->
-                "Maya Wallet";
-            case "INSTALLMENT" ->
-                "Installment";
-            default ->
-                raw;
-        };
-    }
 }

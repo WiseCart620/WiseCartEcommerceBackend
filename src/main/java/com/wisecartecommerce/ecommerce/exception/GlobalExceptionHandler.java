@@ -64,6 +64,27 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        String message = ex.getMessage();
+
+        // Friendly messages for known cases
+        if (message != null && message.contains("Coupon code already exists")) {
+            message = "This coupon code is already in use. Please choose a different code.";
+        }
+
+        ErrorResponse error = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(HttpStatus.BAD_REQUEST.value())
+                .error("Bad Request")
+                .message(message)
+                .path(getCurrentPath())
+                .build();
+
+        log.warn("Illegal argument: {}", ex.getMessage());
+        return new ResponseEntity<>(error, HttpStatus.BAD_REQUEST);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ErrorResponse> handleValidationExceptions(MethodArgumentNotValidException ex) {
         Map<String, String> errors = new HashMap<>();

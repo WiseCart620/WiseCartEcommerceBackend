@@ -20,7 +20,7 @@ public interface CartService {
     CartResponse batchUpdateCart(CartRequest request);
     void clearCart();
     CartResponse applyCoupon(CouponApplyRequest request);
-    CartResponse removeCoupon();
+    CartResponse removeCoupon(String couponCode);
     CartResponse validateCart(CartCheckRequest request);
     Integer getCartItemCount();
     CartResponse mergeCart(CartMergeRequest request);

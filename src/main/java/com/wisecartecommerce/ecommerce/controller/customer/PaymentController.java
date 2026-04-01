@@ -1,5 +1,6 @@
 package com.wisecartecommerce.ecommerce.controller.customer;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -16,8 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.MayaInitiateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.PaymentRequest;
+import com.wisecartecommerce.ecommerce.Dto.Request.RefundRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.service.MayaCheckoutService;
+import com.wisecartecommerce.ecommerce.service.OrderService;
 import com.wisecartecommerce.ecommerce.service.PaymentResponse;
 import com.wisecartecommerce.ecommerce.service.PaymentService;
 
@@ -37,6 +41,7 @@ public class PaymentController {
 
     private final PaymentService paymentService;
     private final MayaCheckoutService mayaCheckoutService;
+    private final OrderService orderService;
 
     @PostMapping
     @Operation(summary = "Process payment")
@@ -92,7 +97,6 @@ public class PaymentController {
         return ResponseEntity.ok().build();
     }
 
-
     @PostMapping("/maya/initiate")
     @Operation(summary = "Initiate Maya checkout (no order created yet)")
     public ResponseEntity<ApiResponse<Map<String, String>>> initiateMayaCheckout(
@@ -108,5 +112,64 @@ public class PaymentController {
             @RequestParam String ref) {
         Map<String, Object> status = mayaCheckoutService.getCheckoutStatus(ref);
         return ResponseEntity.ok(ApiResponse.success("Checkout status", status));
+    }
+
+    @PostMapping("/orders/{orderId}/refund")
+    @Operation(summary = "Request Maya refund for cancelled or returned order")
+    public ResponseEntity<ApiResponse<OrderResponse>> requestMayaRefund(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) RefundRequest request) {
+
+        String reason = request != null ? request.getReason() : "Customer requested refund";
+        BigDecimal amount = request != null ? request.getAmount() : null;
+
+        OrderResponse response = orderService.requestMayaRefund(orderId, reason, amount);
+        return ResponseEntity.ok(ApiResponse.success("Refund initiated successfully", response));
+    }
+
+    /**
+     * Void a Maya payment (for same-day cancellations)
+     *
+     * According to Maya docs: - Void is available only on the same day before
+     * 11:59 PM GMT+8 - Full transaction only (no partial voids) - Hold amount
+     * released instantly
+     *
+     * @param orderId The order ID to void
+     * @param request Optional refund request with reason
+     * @return Updated order response
+     */
+    @PostMapping("/orders/{orderId}/void")
+    @Operation(summary = "Void Maya payment (same-day cancellation only)")
+    public ResponseEntity<ApiResponse<OrderResponse>> requestMayaVoid(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) RefundRequest request) {
+
+        String reason = request != null ? request.getReason() : "Customer requested cancellation";
+
+        OrderResponse response = orderService.requestMayaVoid(orderId, reason);
+        return ResponseEntity.ok(ApiResponse.success("Void initiated successfully", response));
+    }
+
+    /**
+     * Smart cancellation that automatically determines whether to void or
+     * refund based on transaction date
+     *
+     * @param orderId The order ID to cancel
+     * @param request Optional refund request with reason and amount
+     * @return Updated order response
+     */
+    @PostMapping("/orders/{orderId}/cancel")
+    @Operation(summary = "Cancel Maya payment (auto-selects void or refund based on date)")
+    public ResponseEntity<ApiResponse<OrderResponse>> cancelMayaPayment(
+            @PathVariable Long orderId,
+            @RequestBody(required = false) RefundRequest request) {
+
+        String reason = request != null ? request.getReason() : "Customer requested cancellation";
+        BigDecimal amount = request != null ? request.getAmount() : null;
+
+        // The OrderService should implement logic to determine if it's same day
+        // and call the appropriate method (void for same day, refund for next day)
+        OrderResponse response = orderService.cancelMayaPayment(orderId, reason, amount);
+        return ResponseEntity.ok(ApiResponse.success("Cancellation initiated successfully", response));
     }
 }

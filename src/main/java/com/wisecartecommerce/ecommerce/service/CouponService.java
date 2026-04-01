@@ -49,6 +49,8 @@ public class CouponService {
                 .maximumDiscountAmount(request.getMaximumDiscountAmount())
                 .maxUsageCount(request.getMaxUsageCount())
                 .maxUsagePerUser(request.getMaxUsagePerUser())
+                .minimumProductQuantity(request.getMinimumProductQuantity() != null
+                        ? request.getMinimumProductQuantity() : 0)
                 .startDate(request.getStartDate())
                 .expirationDate(request.getExpirationDate())
                 .isActive(request.getActive() != null ? request.getActive() : true)
@@ -68,11 +70,20 @@ public class CouponService {
         coupon.setMaximumDiscountAmount(request.getMaximumDiscountAmount());
         coupon.setMaxUsageCount(request.getMaxUsageCount());
         coupon.setMaxUsagePerUser(request.getMaxUsagePerUser());
+        if (request.getMinimumProductQuantity() != null) {
+            coupon.setMinimumProductQuantity(request.getMinimumProductQuantity());
+        }
         coupon.setStartDate(request.getStartDate());
         coupon.setExpirationDate(request.getExpirationDate());
-        if (request.getActive() != null) coupon.setIsActive(request.getActive());
-        if (request.getApplicableProducts() != null) coupon.setApplicableProducts(request.getApplicableProducts());
-        if (request.getApplicableCategories() != null) coupon.setApplicableCategories(request.getApplicableCategories());
+        if (request.getActive() != null) {
+            coupon.setIsActive(request.getActive());
+        }
+        if (request.getApplicableProducts() != null) {
+            coupon.setApplicableProducts(request.getApplicableProducts());
+        }
+        if (request.getApplicableCategories() != null) {
+            coupon.setApplicableCategories(request.getApplicableCategories());
+        }
         return toResponse(couponRepository.save(coupon));
     }
 
@@ -115,6 +126,7 @@ public class CouponService {
                 .maxUsageCount(coupon.getMaxUsageCount())
                 .currentUsageCount(coupon.getCurrentUsageCount())
                 .maxUsagePerUser(coupon.getMaxUsagePerUser())
+                .minimumProductQuantity(coupon.getMinimumProductQuantity())
                 .startDate(coupon.getStartDate())
                 .expirationDate(coupon.getExpirationDate())
                 .active(coupon.getIsActive())
