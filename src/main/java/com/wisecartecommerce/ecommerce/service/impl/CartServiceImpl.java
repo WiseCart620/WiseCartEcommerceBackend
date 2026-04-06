@@ -86,6 +86,38 @@ public class CartServiceImpl implements CartService {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
+    private void revalidateAndRemoveInvalidCoupons(Cart cart, User user) {
+        if (cart.getCouponCodes() == null || cart.getCouponCodes().isEmpty()) {
+            return;
+        }
+
+        List<String> toRemove = new ArrayList<>();
+
+        for (String code : new ArrayList<>(cart.getCouponCodes())) {
+            try {
+                validateCouponFully(code, cart, user);
+            } catch (CustomException e) {
+                log.info("Coupon {} no longer valid after cart change: {}. Removing.", code, e.getMessage());
+                toRemove.add(code);
+            }
+        }
+
+        if (!toRemove.isEmpty()) {
+            for (String code : toRemove) {
+                cart.removeCoupon(code);
+            }
+            BigDecimal totalDiscount = BigDecimal.ZERO;
+            for (String code : cart.getCouponCodes()) {
+                Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
+                if (c != null) {
+                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
+                }
+            }
+            cart.setCouponDiscountAmount(totalDiscount);
+            cart.calculateTotals();
+        }
+    }
+
     @Override
     @Transactional
     public CartResponse getCart() {
@@ -245,8 +277,7 @@ public class CartServiceImpl implements CartService {
             int availableStock;
             if (cartItem.getVariation() != null) {
                 availableStock = cartItem.getVariation().getStockQuantity() != null
-                        ? cartItem.getVariation().getStockQuantity()
-                        : 0;
+                        ? cartItem.getVariation().getStockQuantity() : 0;
             } else {
                 availableStock = cartItem.getProduct().getStockQuantity();
             }
@@ -255,7 +286,6 @@ public class CartServiceImpl implements CartService {
             }
 
             cartItem.setQuantity(quantity);
-
             if (request.getGiftWrap() != null) {
                 cartItem.setGiftWrap(request.getGiftWrap());
             }
@@ -268,9 +298,8 @@ public class CartServiceImpl implements CartService {
         }
 
         cart.calculateTotals();
+        revalidateAndRemoveInvalidCoupons(cart, user); // ← add this
         Cart savedCart = cartRepository.save(cart);
-
-        log.info("Updated cart item {} quantity to {} for user {}", itemId, quantity, user.getEmail());
         return mapToCartResponse(savedCart);
     }
 
@@ -289,9 +318,8 @@ public class CartServiceImpl implements CartService {
         cart.getItems().remove(cartItem);
         cartItemRepository.delete(cartItem);
         cart.calculateTotals();
+        revalidateAndRemoveInvalidCoupons(cart, user);
         Cart savedCart = cartRepository.save(cart);
-
-        log.info("Removed cart item {} for user {}", itemId, user.getEmail());
         return mapToCartResponse(savedCart);
     }
 
@@ -391,17 +419,48 @@ public class CartServiceImpl implements CartService {
         Coupon coupon = validateCouponFully(couponCode.trim().toUpperCase(), cart, user);
 
         if (Boolean.TRUE.equals(request.getValidateOnly())) {
-            log.info("Validated coupon {} for user {}", couponCode, user.getEmail());
             return mapToCartResponse(cart);
         }
 
         if (cart.getCouponCodes() != null && cart.getCouponCodes().contains(couponCode.trim().toUpperCase())) {
             throw new CustomException("Coupon '" + couponCode + "' is already applied to your cart.");
         }
+
+        if (cart.getCouponCodes() != null && !cart.getCouponCodes().isEmpty()) {
+            // New coupon must allow combining
+            if (!Boolean.TRUE.equals(coupon.getIsCombinable())) {
+                throw new CustomException(
+                        "Coupon '" + couponCode + "' cannot be combined with other coupons.");
+            }
+
+            for (String existingCode : cart.getCouponCodes()) {
+                Coupon existing = couponRepository.findByCodeAndIsActiveTrue(existingCode)
+                        .orElse(null);
+                if (existing == null) {
+                    continue;
+                }
+
+                if (!Boolean.TRUE.equals(existing.getIsCombinable())) {
+                    throw new CustomException(
+                            "Coupon '" + existingCode + "' already in your cart cannot be combined with other coupons.");
+                }
+
+                if (!coupon.getCombinableWith().isEmpty()
+                        && !coupon.getCombinableWith().contains(existing.getId())) {
+                    throw new CustomException(
+                            "Coupon '" + couponCode + "' cannot be combined with coupon '" + existingCode + "'.");
+                }
+
+                if (!existing.getCombinableWith().isEmpty()
+                        && !existing.getCombinableWith().contains(coupon.getId())) {
+                    throw new CustomException(
+                            "Coupon '" + existingCode + "' cannot be combined with coupon '" + couponCode + "'.");
+                }
+            }
+        }
+
         applyCouponToCart(cart, coupon);
         Cart savedCart = cartRepository.save(cart);
-
-        log.info("Applied coupon {} to cart for user {}", couponCode, user.getEmail());
         return mapToCartResponse(savedCart);
     }
 
@@ -421,7 +480,6 @@ public class CartServiceImpl implements CartService {
             for (String code : cart.getCouponCodes()) {
                 Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
                 if (c != null) {
-                    // reuse your existing discount calc logic
                     totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
                 }
             }

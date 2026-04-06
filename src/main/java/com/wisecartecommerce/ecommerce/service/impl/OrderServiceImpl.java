@@ -1,6 +1,7 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -194,7 +195,6 @@ public class OrderServiceImpl implements OrderService {
             log.info("Free shipping applied via coupon '{}'", couponCode);
         } else {
             shippingAmount = resolveShippingFee(
-                    request.getShippingFee(),
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
@@ -205,8 +205,7 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
         BigDecimal taxAmount = taxableAmount
                 .multiply(VAT_RATE)
-                .setScale(2, BigDecimal.ROUND_HALF_UP);
-
+                .setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
         boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
@@ -386,7 +385,6 @@ public class OrderServiceImpl implements OrderService {
             shippingAmount = BigDecimal.ZERO;
         } else {
             shippingAmount = resolveShippingFee(
-                    request.getShippingFee(),
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
@@ -394,7 +392,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
-        BigDecimal taxAmount = taxableAmount.multiply(VAT_RATE).setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal taxAmount = taxableAmount.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
         boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
@@ -583,7 +581,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // ── Shipping ──────────────────────────────────────────────────────────
+// ── Shipping ──────────────────────────────────────────────────────────
         BigDecimal shippingAmount;
         BigDecimal taxableSubtotal = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
 
@@ -591,8 +589,6 @@ public class OrderServiceImpl implements OrderService {
             shippingAmount = BigDecimal.ZERO;
         } else if (taxableSubtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             shippingAmount = BigDecimal.ZERO;
-        } else if (request.getShippingFee() != null && request.getShippingFee().compareTo(BigDecimal.ZERO) > 0) {
-            shippingAmount = request.getShippingFee();
         } else {
             try {
                 int cat = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
@@ -609,7 +605,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        BigDecimal taxAmount = taxableSubtotal.multiply(VAT_RATE).setScale(2, BigDecimal.ROUND_HALF_UP);
+        BigDecimal taxAmount = taxableSubtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableSubtotal.add(shippingAmount).add(taxAmount);
 
         Order order = Order.builder()
@@ -681,7 +677,6 @@ public class OrderServiceImpl implements OrderService {
     // Shipping resolution
     // ══════════════════════════════════════════════════════════════════════════
     private BigDecimal resolveShippingFee(
-            BigDecimal clientFee,
             Integer expressCategory,
             Address destination,
             BigDecimal subtotal,
@@ -690,11 +685,6 @@ public class OrderServiceImpl implements OrderService {
         if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             log.info("Free shipping applied (subtotal ₱{})", subtotal);
             return BigDecimal.ZERO;
-        }
-
-        if (clientFee != null && clientFee.compareTo(BigDecimal.ZERO) > 0) {
-            log.info("Using client-provided shipping fee: ₱{}", clientFee);
-            return clientFee;
         }
 
         try {
@@ -992,7 +982,7 @@ public class OrderServiceImpl implements OrderService {
         stats.put("todayOrders", Optional.ofNullable(orderRepository.countTodayOrders()).orElse(0L));
         long total = orderRepository.count();
         stats.put("averageOrderValue", total > 0 && revenue != null
-                ? revenue.divide(BigDecimal.valueOf(total), 2, BigDecimal.ROUND_HALF_UP)
+                ? revenue.divide(BigDecimal.valueOf(total), 2, RoundingMode.HALF_UP)
                 : BigDecimal.ZERO);
         return stats;
     }

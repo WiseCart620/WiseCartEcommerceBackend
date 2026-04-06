@@ -57,6 +57,14 @@ public class Coupon {
     @Builder.Default
     private Boolean isActive = true;
 
+    @Column(name = "is_combinable", nullable = false)
+    private Boolean isCombinable = false;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "coupon_combinable_with", joinColumns = @JoinColumn(name = "coupon_id"))
+    @Column(name = "combinable_coupon_id")
+    private Set<Long> combinableWith = new HashSet<>();
+
     @ElementCollection
     @CollectionTable(name = "coupon_applicable_products", joinColumns = @JoinColumn(name = "coupon_id"))
     @Column(name = "product_id")

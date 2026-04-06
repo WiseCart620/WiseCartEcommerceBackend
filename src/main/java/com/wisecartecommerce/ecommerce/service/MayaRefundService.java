@@ -41,16 +41,21 @@ public class MayaRefundService {
      * @param reason The reason for the void
      */
     public Map<String, Object> voidPayment(String transactionReferenceNo, String reason) {
-        String url = mayaBaseUrl + "/p3/void";
+        // For Maya Checkout API, void uses the checkoutId not the transactionId
+        String url = mayaBaseUrl + "/checkout/v1/checkouts/" + transactionReferenceNo + "/void";
 
-        HttpHeaders headers = buildHeaders();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String auth = mayaSecretKey + ":";
+        headers.set("Authorization", "Basic "
+                + Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8)));
+        headers.set("Request-Reference-No", generateRequestReferenceNumber());
 
         Map<String, Object> body = new HashMap<>();
-        body.put("transactionReferenceNo", transactionReferenceNo);
         body.put("reason", reason != null ? reason : "Customer requested cancellation");
-        body.put("reasonCode", "00"); // 00 = customer requested
+        body.put("requestReferenceNumber", generateRequestReferenceNumber());
 
-        log.info("Maya void request: url={} transactionRef={}", url, transactionReferenceNo);
+        log.info("Maya void request: url={} checkoutId={}", url, transactionReferenceNo);
         log.debug("Maya void request body: {}", body);
 
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(body, headers);
@@ -58,13 +63,22 @@ public class MayaRefundService {
         try {
             @SuppressWarnings("unchecked")
             Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);
-            log.info("Maya void successful: transactionRef={} response={}", transactionReferenceNo, response);
+            log.info("Maya void successful: checkoutId={} response={}", transactionReferenceNo, response);
             return response;
         } catch (HttpClientErrorException e) {
             log.error("Maya void HTTP error: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
+            if (e.getStatusCode().value() == 404) {
+                throw new RuntimeException("Maya void failed: checkout not found - " + transactionReferenceNo);
+            }
+            if (e.getStatusCode().value() == 401) {
+                throw new RuntimeException("Maya void failed: unauthorized - check API keys");
+            }
+            if (e.getStatusCode().value() == 400) {
+                throw new RuntimeException("Maya void failed: " + e.getResponseBodyAsString());
+            }
             throw new RuntimeException("Maya void failed: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
         } catch (Exception e) {
-            log.error("Maya void failed: transactionRef={} error={}", transactionReferenceNo, e.getMessage(), e);
+            log.error("Maya void failed: checkoutId={} error={}", transactionReferenceNo, e.getMessage(), e);
             throw new RuntimeException("Maya void failed: " + e.getMessage(), e);
         }
     }
@@ -79,19 +93,19 @@ public class MayaRefundService {
      * @param reason The reason for the refund
      */
     public Map<String, Object> refund(String transactionReferenceNo, BigDecimal amount, String reason) {
-        String url = mayaBaseUrl + "/p3/refund";
+        String url = mayaBaseUrl + "/checkout/v1/checkouts/" + transactionReferenceNo + "/refund";
 
-        HttpHeaders headers = buildHeaders();
-
-        Map<String, Object> amountObj = new HashMap<>();
-        amountObj.put("value", amount);
-        amountObj.put("currency", "PHP");
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String auth = mayaSecretKey + ":";
+        headers.set("Authorization", "Basic "
+                + Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8)));
+        headers.set("Request-Reference-No", generateRequestReferenceNumber());
 
         Map<String, Object> body = new HashMap<>();
-        body.put("transactionReferenceNo", transactionReferenceNo);
-        body.put("amount", amountObj);
         body.put("reason", reason != null ? reason : "Customer requested refund");
-        body.put("reasonCode", "00"); // 00 = customer requested
+        body.put("requestReferenceNumber", generateRequestReferenceNumber());
+        body.put("totalAmount", Map.of("value", amount, "currency", "PHP"));
 
         log.info("Maya refund request: url={} transactionRef={} amount={}", url, transactionReferenceNo, amount);
         log.debug("Maya refund request body: {}", body);
@@ -103,9 +117,24 @@ public class MayaRefundService {
             Map<String, Object> response = restTemplate.postForObject(url, request, Map.class);
             log.info("Maya refund successful: transactionRef={} response={}", transactionReferenceNo, response);
             return response;
+
         } catch (HttpClientErrorException e) {
             log.error("Maya refund HTTP error: status={} body={}", e.getStatusCode(), e.getResponseBodyAsString());
+
+            if (e.getStatusCode().value() == 404) {
+                throw new RuntimeException("Maya refund failed: payment not found - " + transactionReferenceNo);
+            }
+            if (e.getStatusCode().value() == 401) {
+                log.error("Maya refund 401 - check secret key configuration");
+                throw new RuntimeException("Maya refund failed: unauthorized - check API keys");
+            }
+            if (e.getStatusCode().value() == 400) {
+                log.warn("Maya refund 400: {}", e.getResponseBodyAsString());
+                throw new RuntimeException("Maya refund failed: " + e.getResponseBodyAsString());
+            }
+
             throw new RuntimeException("Maya refund failed: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+
         } catch (Exception e) {
             log.error("Maya refund failed: transactionRef={} error={}", transactionReferenceNo, e.getMessage(), e);
             throw new RuntimeException("Maya refund failed: " + e.getMessage(), e);

@@ -78,3 +78,10 @@ maya:
   failure-url: ${MAYA_FAILURE_URL:http://localhost:3000/payment/failed}
   cancel-url: ${MAYA_CANCEL_URL:http://localhost:3000/payment/cancelled}
   webhook-url: ${MAYA_WEBHOOK_URL:https://unrevertible-senaida-continentally.ngrok-free.dev/api/webhooks/maya}
+
+logging:
+  file:
+    name: logs/spring.log
+  level:
+    root: INFO
+    com.wisecartecommerce: DEBUG

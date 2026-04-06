@@ -1,17 +1,21 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.util.HashSet;
+import java.util.Map;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.CouponRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.CouponResponse;
 import com.wisecartecommerce.ecommerce.entity.Coupon;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
+
 import jakarta.persistence.EntityNotFoundException;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.*;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -56,6 +60,8 @@ public class CouponService {
                 .isActive(request.getActive() != null ? request.getActive() : true)
                 .applicableProducts(request.getApplicableProducts() != null ? request.getApplicableProducts() : new java.util.HashSet<>())
                 .applicableCategories(request.getApplicableCategories() != null ? request.getApplicableCategories() : new java.util.HashSet<>())
+                .isCombinable(request.getCombinable() != null ? request.getCombinable() : false)
+                .combinableWith(request.getCombinableWith() != null ? request.getCombinableWith() : new HashSet<>())
                 .build();
         return toResponse(couponRepository.save(coupon));
     }
@@ -70,6 +76,10 @@ public class CouponService {
         coupon.setMaximumDiscountAmount(request.getMaximumDiscountAmount());
         coupon.setMaxUsageCount(request.getMaxUsageCount());
         coupon.setMaxUsagePerUser(request.getMaxUsagePerUser());
+        coupon.setIsCombinable(request.getCombinable() != null ? request.getCombinable() : false);
+        if (request.getCombinableWith() != null) {
+            coupon.setCombinableWith(request.getCombinableWith());
+        }
         if (request.getMinimumProductQuantity() != null) {
             coupon.setMinimumProductQuantity(request.getMinimumProductQuantity());
         }
@@ -130,6 +140,8 @@ public class CouponService {
                 .startDate(coupon.getStartDate())
                 .expirationDate(coupon.getExpirationDate())
                 .active(coupon.getIsActive())
+                .combinable(coupon.getIsCombinable())
+                .combinableWith(coupon.getCombinableWith())
                 .applicableProducts(coupon.getApplicableProducts())
                 .applicableCategories(coupon.getApplicableCategories())
                 .createdAt(coupon.getCreatedAt())

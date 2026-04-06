@@ -44,7 +44,7 @@ public class MayaService {
         }
 
         Map<String, Object> body = Map.of(
-                "totalAmount", Map.of("value", amount.doubleValue(), "currency", "PHP"),
+                "totalAmount", Map.of("value", amount, "currency", "PHP"),
                 "requestReferenceNumber", checkoutRef,
                 "redirectUrl", Map.of(
                         "success", props.getSuccessUrl() + "?ref=" + checkoutRef,

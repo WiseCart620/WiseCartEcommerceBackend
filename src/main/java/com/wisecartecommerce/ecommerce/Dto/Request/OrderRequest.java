@@ -1,7 +1,5 @@
 package com.wisecartecommerce.ecommerce.Dto.Request;
 
-import java.math.BigDecimal;
-
 import lombok.Data;
 
 @Data
@@ -16,10 +14,9 @@ public class OrderRequest {
     private String paymentMethod;
     private String notes;
     private String couponCode;
-    private BigDecimal shippingFee;
-
     private Integer expressCategory;
     private String mayaPaymentMethod;
+    
 
     @Data
     public static class AddressData {

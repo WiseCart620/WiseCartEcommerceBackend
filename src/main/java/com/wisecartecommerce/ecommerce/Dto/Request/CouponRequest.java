@@ -6,6 +6,7 @@ import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
 import java.util.Set;
 
 @Data
@@ -41,4 +42,6 @@ public class CouponRequest {
     private Boolean active = true;
     private Set<Long> applicableProducts;
     private Set<Long> applicableCategories;
+    private Boolean combinable = false;
+    private Set<Long> combinableWith = new HashSet<>();
 }

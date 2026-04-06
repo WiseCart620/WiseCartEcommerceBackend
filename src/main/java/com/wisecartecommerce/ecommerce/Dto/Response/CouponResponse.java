@@ -1,17 +1,22 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import com.wisecartecommerce.ecommerce.entity.Coupon;
-import lombok.*;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Set;
+
+import com.wisecartecommerce.ecommerce.entity.Coupon;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CouponResponse {
+
     private Long id;
     private String code;
     private String description;
@@ -30,5 +35,7 @@ public class CouponResponse {
     private Set<Long> applicableCategories;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
-    
+    private Boolean combinable;
+    private Set<Long> combinableWith;
+
 }

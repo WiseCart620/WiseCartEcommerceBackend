@@ -174,20 +174,24 @@ public class MayaCheckoutService {
                 // Primary: transactionReferenceNumber at root level
                 // Your logs confirm this field is present: transactionReferenceNumber=e8525301-...
                 try {
-                    String mayaPaymentId = (String) checkoutDetails.get("transactionReferenceNumber");
+                    String mayaPaymentId = null;
 
-                    // Fallback: paymentDetails.responses.efs.paymentTransactionReferenceNo
-                    if (mayaPaymentId == null && checkoutDetails.containsKey("paymentDetails")) {
-                        try {
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> pd = (Map<String, Object>) checkoutDetails.get("paymentDetails");
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> responses = (Map<String, Object>) pd.get("responses");
-                            @SuppressWarnings("unchecked")
-                            Map<String, Object> efs = (Map<String, Object>) responses.get("efs");
-                            mayaPaymentId = (String) efs.get("paymentTransactionReferenceNo");
-                        } catch (Exception ignored) {
-                        }
+                    // Primary: receipt transactionId (correct ID for voids/refunds)
+                    try {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> pd = (Map<String, Object>) checkoutDetails.get("paymentDetails");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> responses = (Map<String, Object>) pd.get("responses");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> efs = (Map<String, Object>) responses.get("efs");
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> receipt = (Map<String, Object>) efs.get("receipt");
+                        mayaPaymentId = (String) receipt.get("transactionId");
+                        log.info("Extracted transactionId from receipt: {}", mayaPaymentId);
+                    } catch (Exception e) {
+                        log.warn("Could not extract transactionId from receipt, falling back: {}", e.getMessage());
+                        // Fallback to root-level transactionReferenceNumber
+                        mayaPaymentId = (String) checkoutDetails.get("transactionReferenceNumber");
                     }
 
 // In handlePaymentSuccess(), after extracting paymentId
@@ -217,7 +221,6 @@ public class MayaCheckoutService {
         orderRequest.setPaymentMethod("maya");
         orderRequest.setMayaPaymentMethod(mayaPaymentMethod);
         orderRequest.setNotes(pending.getNotes());
-        orderRequest.setShippingFee(pending.getShippingFee());
         orderRequest.setExpressCategory(pending.getExpressCategory());
 
         if (pending.getShippingAddressId() != null) {
