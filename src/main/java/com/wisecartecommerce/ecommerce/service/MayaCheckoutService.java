@@ -67,7 +67,7 @@ public class MayaCheckoutService {
 
         BigDecimal total = taxable.add(shipping).add(tax);
 
-        String checkoutRef = "WC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20);
+        String checkoutRef = UUID.randomUUID().toString();
 
         PendingCheckout pending = PendingCheckout.builder()
                 .checkoutRef(checkoutRef)
@@ -94,7 +94,13 @@ public class MayaCheckoutService {
 
         pendingCheckoutRepository.save(pending);
 
-        Map<String, String> checkoutResult = mayaService.createCheckout(checkoutRef, total);
+        Map<String, String> checkoutResult = mayaService.createCheckout(
+                checkoutRef, total,
+                pending.getFirstName(),
+                pending.getLastName(),
+                pending.getPhone(),
+                user.getEmail()
+        );
         String checkoutUrl = checkoutResult.get("redirectUrl");
         String checkoutId = checkoutResult.get("checkoutId");
         pending.setMayaCheckoutUrl(checkoutUrl);
@@ -170,13 +176,9 @@ public class MayaCheckoutService {
 
                 log.info("Maya payment method resolved for ref={}: {}", checkoutRef, mayaPaymentMethod);
 
-                // ── Extract Maya paymentId for refunds ────────────────────────
-                // Primary: transactionReferenceNumber at root level
-                // Your logs confirm this field is present: transactionReferenceNumber=e8525301-...
                 try {
                     String mayaPaymentId = null;
 
-                    // Primary: receipt transactionId (correct ID for voids/refunds)
                     try {
                         @SuppressWarnings("unchecked")
                         Map<String, Object> pd = (Map<String, Object>) checkoutDetails.get("paymentDetails");
@@ -194,7 +196,6 @@ public class MayaCheckoutService {
                         mayaPaymentId = (String) checkoutDetails.get("transactionReferenceNumber");
                     }
 
-// In handlePaymentSuccess(), after extracting paymentId
                     if (mayaPaymentId != null) {
                         pending.setMayaPaymentId(mayaPaymentId);
                         pendingCheckoutRepository.save(pending);

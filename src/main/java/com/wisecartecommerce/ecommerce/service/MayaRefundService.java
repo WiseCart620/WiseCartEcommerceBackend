@@ -27,6 +27,9 @@ public class MayaRefundService {
     @Value("${maya.secret-key}")
     private String mayaSecretKey;
 
+    @Value("${maya.public-key}")
+    private String mayaPublicKey;
+
     @Value("${maya.base-url}")
     private String mayaBaseUrl;
 
@@ -41,18 +44,21 @@ public class MayaRefundService {
      * @param reason The reason for the void
      */
     public Map<String, Object> voidPayment(String transactionReferenceNo, String reason) {
-        // For Maya Checkout API, void uses the checkoutId not the transactionId
-        String url = mayaBaseUrl + "/checkout/v1/checkouts/" + transactionReferenceNo + "/void";
-
+        String url = mayaBaseUrl + "/p3/void";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         String auth = mayaSecretKey + ":";
-        headers.set("Authorization", "Basic "
-                + Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8)));
+        String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+        headers.set("Authorization", "Basic " + encodedAuth);
+
+        // Required headers for P3
         headers.set("Request-Reference-No", generateRequestReferenceNumber());
+        headers.set("X-REQUEST-VIA", "API");
 
         Map<String, Object> body = new HashMap<>();
+        body.put("transactionReferenceNo", transactionReferenceNo);
         body.put("reason", reason != null ? reason : "Customer requested cancellation");
+        body.put("reasonCode", "00");
         body.put("requestReferenceNumber", generateRequestReferenceNumber());
 
         log.info("Maya void request: url={} checkoutId={}", url, transactionReferenceNo);
@@ -93,7 +99,7 @@ public class MayaRefundService {
      * @param reason The reason for the refund
      */
     public Map<String, Object> refund(String transactionReferenceNo, BigDecimal amount, String reason) {
-        String url = mayaBaseUrl + "/checkout/v1/checkouts/" + transactionReferenceNo + "/refund";
+        String url = mayaBaseUrl + "/p3/refund";
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -103,9 +109,10 @@ public class MayaRefundService {
         headers.set("Request-Reference-No", generateRequestReferenceNumber());
 
         Map<String, Object> body = new HashMap<>();
+        body.put("transactionReferenceNo", transactionReferenceNo);
         body.put("reason", reason != null ? reason : "Customer requested refund");
         body.put("requestReferenceNumber", generateRequestReferenceNumber());
-        body.put("totalAmount", Map.of("value", amount, "currency", "PHP"));
+        body.put("amount", Map.of("value", amount, "currency", "PHP"));
 
         log.info("Maya refund request: url={} transactionRef={} amount={}", url, transactionReferenceNo, amount);
         log.debug("Maya refund request body: {}", body);

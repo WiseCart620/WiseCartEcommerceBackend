@@ -49,26 +49,26 @@ public class MayaWebhookController {
 
         log.info("Maya webhook: status={} ref={}", status, ref);
 
-            if (ref == null || !ref.startsWith("WC-")) {
-                log.warn("Maya webhook: unrecognized ref={}", ref);
-                return ResponseEntity.ok().build();
-            }
-    
-            try {
-                if ("PAYMENT_SUCCESS".equals(status)) {
-                    mayaCheckoutService.handlePaymentSuccess(ref);
-                } else if ("PAYMENT_FAILED".equals(status) || "PAYMENT_EXPIRED".equals(status)) {
-                    mayaCheckoutService.handlePaymentFailed(ref);
-                } else if ("REFUND_SUCCESS".equals(status)) {
-                    log.info("Maya refund confirmed via webhook: ref={}", ref);
-                } else if ("REFUND_FAILED".equals(status)) {
-                    log.error("Maya refund FAILED via webhook: ref={}", ref);
-                }
-            } catch (Exception e) {
-                log.error("Error processing Maya webhook ref={}: {}", ref, e.getMessage(), e);
-            }
-    
+        if (ref == null || ref.isBlank()) {
+            log.warn("Maya webhook: missing ref");
             return ResponseEntity.ok().build();
         }
 
+        try {
+            if ("PAYMENT_SUCCESS".equals(status)) {
+                mayaCheckoutService.handlePaymentSuccess(ref);
+            } else if ("PAYMENT_FAILED".equals(status) || "PAYMENT_EXPIRED".equals(status)) {
+                mayaCheckoutService.handlePaymentFailed(ref);
+            } else if ("REFUND_SUCCESS".equals(status)) {
+                log.info("Maya refund confirmed via webhook: ref={}", ref);
+            } else if ("REFUND_FAILED".equals(status)) {
+                log.error("Maya refund FAILED via webhook: ref={}", ref);
+            }
+        } catch (Exception e) {
+            log.error("Error processing Maya webhook ref={}: {}", ref, e.getMessage(), e);
+        }
+
+        return ResponseEntity.ok().build();
     }
+
+}

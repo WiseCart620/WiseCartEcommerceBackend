@@ -255,18 +255,22 @@ public class OrderServiceImpl implements OrderService {
         log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
         saved = orderRepository.save(saved);
 
-        // Update stock
+// ── NOW update stock (after order is successfully saved) ──────────────
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
-            productRepository.findById(entry.getKey()).ifPresent(p -> {
-                p.setStockQuantity(entry.getValue());
-                productRepository.save(p);
-            });
+            Product product = productRepository.findById(entry.getKey()).orElse(null);
+            if (product != null) {
+                product.setStockQuantity(entry.getValue());
+                int soldQuantity = getQuantityForProduct(saved.getItems(), entry.getKey());
+                product.setSoldCount(product.getSoldCount() + soldQuantity);
+                productRepository.save(product);
+            }
         }
         for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
-            productVariationRepository.findById(entry.getKey()).ifPresent(v -> {
-                v.setStockQuantity(entry.getValue());
-                productVariationRepository.save(v);
-            });
+            ProductVariation variation = productVariationRepository.findById(entry.getKey()).orElse(null);
+            if (variation != null) {
+                variation.setStockQuantity(entry.getValue());
+                productVariationRepository.save(variation);
+            }
         }
 
         // ── Record coupon usage + increment counter ────────────────────────────
@@ -480,9 +484,6 @@ public class OrderServiceImpl implements OrderService {
         return mapToOrderResponse(saved);
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Guest order creation
-    // ══════════════════════════════════════════════════════════════════════════
     @Override
     @Transactional
     @SuppressWarnings("null")
@@ -506,8 +507,11 @@ public class OrderServiceImpl implements OrderService {
                 .isDefault(false)
                 .build());
 
-        // ── Build line items ──────────────────────────────────────────────────
+        // ── Build line items and collect stock updates ────────────────────────
         List<OrderItem> orderItems = new ArrayList<>();
+        List<CartItem> cartItemsForValidation = new ArrayList<>();
+        Map<Long, Integer> stockUpdates = new HashMap<>();
+        Map<Long, Integer> variationStockUpdates = new HashMap<>();
         int totalWeightGrams = 0;
 
         for (GuestOrderRequest.GuestOrderItemRequest itemReq : request.getItems()) {
@@ -534,37 +538,47 @@ public class OrderServiceImpl implements OrderService {
                             + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
                 }
 
-                variation.setStockQuantity(variation.getStockQuantity() - itemReq.getQuantity());
-                productVariationRepository.save(variation);
+                // Store stock update for later (don't update yet)
+                variationStockUpdates.put(variation.getId(),
+                        variation.getStockQuantity() - itemReq.getQuantity());
                 price = (variation.getPrice() != null) ? variation.getPrice() : product.getDiscountedPrice();
             } else {
                 if (product.getStockQuantity() < itemReq.getQuantity()) {
                     throw new CustomException("Insufficient stock for '" + product.getName()
                             + "'. Available: " + product.getStockQuantity());
                 }
-                product.setStockQuantity(product.getStockQuantity() - itemReq.getQuantity());
+
+                // Store stock update for later (don't update yet)
+                stockUpdates.put(product.getId(), product.getStockQuantity() - itemReq.getQuantity());
                 price = product.getDiscountedPrice();
             }
 
             BigDecimal itemSubtotal = price.multiply(BigDecimal.valueOf(itemReq.getQuantity()));
 
-            orderItems.add(OrderItem.builder()
+            OrderItem orderItem = OrderItem.builder()
                     .product(product)
                     .variation(variation)
                     .quantity(itemReq.getQuantity())
                     .price(price)
                     .subtotal(itemSubtotal)
-                    .build());
+                    .build();
+            orderItems.add(orderItem);
+
+            // Build CartItem for coupon validation
+            CartItem cartItemForValidation = new CartItem();
+            cartItemForValidation.setProduct(product);
+            cartItemForValidation.setVariation(variation);
+            cartItemForValidation.setQuantity(itemReq.getQuantity());
+            cartItemsForValidation.add(cartItemForValidation);
 
             totalWeightGrams += product.getWeightGrams() * itemReq.getQuantity();
-            product.setSoldCount(product.getSoldCount() + itemReq.getQuantity());
-            productRepository.save(product);
         }
 
         BigDecimal subtotal = orderItems.stream()
                 .map(OrderItem::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
+        // ── Coupon validation ─────────────────────────────────────────────────
         String couponCode = request.getCouponCode();
         BigDecimal discountAmount = BigDecimal.ZERO;
         boolean couponFreeShipping = false;
@@ -572,7 +586,7 @@ public class OrderServiceImpl implements OrderService {
 
         if (couponCode != null && !couponCode.isBlank()) {
             try {
-                couponResult = couponValidator.validate(couponCode, subtotal, null, null);
+                couponResult = couponValidator.validate(couponCode, subtotal, null, cartItemsForValidation);
                 discountAmount = couponResult.getDiscountAmount();
                 couponFreeShipping = couponResult.isFreeShipping();
                 log.info("Guest coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
@@ -581,7 +595,7 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-// ── Shipping ──────────────────────────────────────────────────────────
+        // ── Shipping calculation ──────────────────────────────────────────────
         BigDecimal shippingAmount;
         BigDecimal taxableSubtotal = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
 
@@ -605,9 +619,11 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        // ── Tax and final amount ──────────────────────────────────────────────
         BigDecimal taxAmount = taxableSubtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableSubtotal.add(shippingAmount).add(taxAmount);
 
+        // ── Create and save order ─────────────────────────────────────────────
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
                 .guestEmail(request.getGuestEmail())
@@ -619,6 +635,7 @@ public class OrderServiceImpl implements OrderService {
                 .couponCode(couponCode)
                 .notes(request.getNotes())
                 .status(OrderStatus.PENDING)
+                .paymentStatus(PaymentStatus.PENDING)
                 .totalAmount(subtotal)
                 .discountAmount(discountAmount)
                 .shippingAmount(shippingAmount)
@@ -635,16 +652,38 @@ public class OrderServiceImpl implements OrderService {
         Order saved = orderRepository.save(order);
         orderRepository.flush();
 
+        // ── Assign Flash Express order number ─────────────────────────────────
         int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
         int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
         assignFlashOrderNumber(saved, shippingAddress, weight, category);
         log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
         saved = orderRepository.save(saved);
 
+        // ── NOW update stock (after order is successfully saved) ──────────────
+        // Fix: Use direct retrieval without lambda that requires effectively final variable
+        for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
+            Product product = productRepository.findById(entry.getKey()).orElse(null);
+            if (product != null) {
+                product.setStockQuantity(entry.getValue());
+                int soldQuantity = getQuantityForProduct(saved.getItems(), entry.getKey());
+                product.setSoldCount(product.getSoldCount() + soldQuantity);
+                productRepository.save(product);
+            }
+        }
+        for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
+            ProductVariation variation = productVariationRepository.findById(entry.getKey()).orElse(null);
+            if (variation != null) {
+                variation.setStockQuantity(entry.getValue());
+                productVariationRepository.save(variation);
+            }
+        }
+
+        // ── Record coupon usage ───────────────────────────────────────────────
         if (couponResult != null) {
             recordCouponUsage(couponResult.getCoupon(), null, request.getGuestEmail(), saved);
         }
 
+        // ── Send notifications ────────────────────────────────────────────────
         emailService.sendOrderConfirmationEmail(saved);
         notificationService.createAdminNotification(
                 "New Guest Order Received",
@@ -652,9 +691,19 @@ public class OrderServiceImpl implements OrderService {
                 "ORDER",
                 saved.getId(),
                 "ORDER");
+
         log.info("Guest order created: {} | {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), request.getGuestEmail(), discountAmount, shippingAmount);
+
         return mapToGuestOrderResponse(saved);
+    }
+
+// Helper method to get quantity for a product from order items
+    private int getQuantityForProduct(List<OrderItem> items, Long productId) {
+        return items.stream()
+                .filter(item -> item.getProduct().getId().equals(productId) && item.getVariation() == null)
+                .mapToInt(OrderItem::getQuantity)
+                .sum();
     }
 
     private void recordCouponUsage(Coupon coupon, User user, String guestEmail, Order order) {
