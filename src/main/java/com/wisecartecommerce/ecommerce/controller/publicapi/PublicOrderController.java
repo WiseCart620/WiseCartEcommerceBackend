@@ -158,7 +158,8 @@ public class PublicOrderController {
                     order.getGuestEmail(),
                     successUrl,
                     failureUrl,
-                    cancelUrl
+                    cancelUrl,
+                    null
             );
 
             String redirectUrl = checkoutResult.get("redirectUrl");
@@ -220,35 +221,81 @@ public class PublicOrderController {
                 return ResponseEntity.ok(ApiResponse.success("Status retrieved", response));
             }
 
+            // Get the order
+            Order order = payment.getOrder();
+
+            // CRITICAL: Check if order is already completed - if so, just return
+            if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+                Map<String, Object> response = new HashMap<>();
+                response.put("status", "COMPLETED");
+                response.put("orderId", order.getId());
+                response.put("orderNumber", order.getOrderNumber());
+                return ResponseEntity.ok(ApiResponse.success("Payment already completed", response));
+            }
+
             String checkoutId = payment.getMayaPaymentId();
-            String status = "PENDING";
+            String mayaStatus = "PENDING";
 
             if (checkoutId != null) {
-                status = mayaService.getCheckoutStatus(checkoutId);
-                if (status == null) {
-                    status = "PENDING";
+                // Get the REAL status from Maya API
+                mayaStatus = mayaService.getCheckoutStatus(checkoutId);
+                log.info("Guest payment ref={} - Maya API returned status: {}", ref, mayaStatus);
+
+                if (mayaStatus == null) {
+                    mayaStatus = "PENDING";
                 }
             }
 
             Map<String, Object> response = new HashMap<>();
-            response.put("status", status);
-            response.put("orderId", payment.getOrder().getId());
-            response.put("orderNumber", payment.getOrder().getOrderNumber());
+            response.put("orderId", order.getId());
+            response.put("orderNumber", order.getOrderNumber());
 
-            // If payment is completed, update order status
-            if ("COMPLETED".equals(status) || "PAYMENT_SUCCESS".equals(status)) {
-                payment.setStatus(PaymentStatus.COMPLETED);
-                payment.setCompletedAt(LocalDateTime.now());
+            // ONLY mark as COMPLETED if Maya ACTUALLY says COMPLETED
+            if ("COMPLETED".equals(mayaStatus) || "PAYMENT_SUCCESS".equals(mayaStatus)) {
 
-                Order order = payment.getOrder();
-                order.setPaymentStatus(PaymentStatus.COMPLETED);
-                order.setStatus(OrderStatus.PROCESSING);
+                // Double verify with Maya details endpoint
+                Map<String, Object> details = mayaService.getCheckoutDetails(checkoutId);
+                if (details == null || !"COMPLETED".equals(details.get("status"))) {
+                    log.error("❌ Guest payment verification FAILED for ref={}: Maya details don't confirm completion", ref);
+                    response.put("status", "FAILED");
+                    response.put("message", "Payment verification failed - insufficient balance or payment not completed");
+                    return ResponseEntity.ok(ApiResponse.success("Payment verification failed", response));
+                }
 
-                orderRepository.save(order);
-                paymentRepository.save(payment);
+                // Update order status only if payment was actually successful
+                if (order.getPaymentStatus() != PaymentStatus.COMPLETED) {
+                    payment.setStatus(PaymentStatus.COMPLETED);
+                    payment.setCompletedAt(LocalDateTime.now());
 
-                log.info("Payment completed for guest order: {}", order.getOrderNumber());
+                    order.setPaymentStatus(PaymentStatus.COMPLETED);
+                    order.setStatus(OrderStatus.PROCESSING);
+
+                    orderRepository.save(order);
+                    paymentRepository.save(payment);
+
+                    log.info("✅ Guest payment COMPLETED for order: {}", order.getOrderNumber());
+                }
                 response.put("status", "COMPLETED");
+
+            } else if ("FAILED".equals(mayaStatus) || "EXPIRED".equals(mayaStatus) || "CANCELLED".equals(mayaStatus)) {
+                // Mark as FAILED
+                if (order.getPaymentStatus() != PaymentStatus.FAILED) {
+                    order.setPaymentStatus(PaymentStatus.FAILED);
+                    order.setStatus(OrderStatus.CANCELLED);
+                    orderRepository.save(order);
+
+                    payment.setStatus(PaymentStatus.FAILED);
+                    paymentRepository.save(payment);
+
+                    log.warn("❌ Guest payment FAILED for order: {}", order.getOrderNumber());
+                }
+                response.put("status", "FAILED");
+                response.put("message", "Payment failed - insufficient balance");
+
+            } else {
+                // Still pending
+                response.put("status", "PENDING");
+                response.put("message", "Payment still processing");
             }
 
             return ResponseEntity.ok(ApiResponse.success("Status retrieved", response));
@@ -257,7 +304,7 @@ public class PublicOrderController {
             log.error("Failed to check guest payment status: {}", e.getMessage(), e);
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("status", "ERROR");
-            errorResponse.put("message", e.getMessage());
+            errorResponse.put("message", "Unable to verify payment status");
             return ResponseEntity.ok(ApiResponse.success("Status check completed", errorResponse));
         }
     }

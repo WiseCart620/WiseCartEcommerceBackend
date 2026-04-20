@@ -28,12 +28,11 @@ public class MayaService {
     private final MayaProperties props;
     private final RestTemplate restTemplate;
 
-    // Original method - keep this for backward compatibility
     public Map<String, String> createCheckout(String checkoutRef, BigDecimal amount,
             String firstName, String lastName, String phone, String email) {
         return createCheckoutWithRedirects(
                 checkoutRef, amount, firstName, lastName, phone, email,
-                null, null, null
+                null, null, null, null
         );
     }
 
@@ -42,7 +41,6 @@ public class MayaService {
         return createCheckout(checkoutRef, amount, null, null, null, null);
     }
 
-    // ✅ NEW METHOD with custom redirect URLs
     public Map<String, String> createCheckoutWithRedirects(
             String checkoutRef,
             BigDecimal amount,
@@ -52,7 +50,8 @@ public class MayaService {
             String email,
             String customSuccessUrl,
             String customFailureUrl,
-            String customCancelUrl) {
+            String customCancelUrl,
+            List<Map<String, Object>> cartItems) {
 
         log.info("Creating Maya checkout: ref={} amount={}", checkoutRef, amount);
 
@@ -111,12 +110,15 @@ public class MayaService {
         body.put("requestReferenceNumber", checkoutRef);
         body.put("buyer", buyer);
 
-        // ✅ Add items array (REQUIRED)
-        body.put("items", List.of(Map.of(
-                "name", "WiseCart Order",
-                "quantity", 1,
-                "totalAmount", Map.of("value", amount, "currency", "PHP")
-        )));
+        if (cartItems != null && !cartItems.isEmpty()) {
+            body.put("items", cartItems);
+        } else {
+            body.put("items", List.of(Map.of(
+                    "name", "WiseCart Order",
+                    "quantity", 1,
+                    "totalAmount", Map.of("value", amount, "currency", "PHP")
+            )));
+        }
 
         // ✅ Use custom redirect URLs
         body.put("redirectUrl", Map.of(
@@ -189,7 +191,6 @@ public class MayaService {
         }
 
         try {
-            // ✅ Use SECRET key for status checks
             String credentials = Base64.getEncoder()
                     .encodeToString((props.getSecretKey() + ":").getBytes());
 
@@ -209,6 +210,25 @@ public class MayaService {
 
             if (response != null) {
                 String status = (String) response.get("status");
+
+                // Check for error codes in failed status
+                if ("FAILED".equals(status)) {
+                    String errorCode = null;
+                    if (response.containsKey("code")) {
+                        errorCode = (String) response.get("code");
+                    } else if (response.containsKey("error")) {
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> error = (Map<String, Object>) response.get("error");
+                        if (error != null && error.containsKey("code")) {
+                            errorCode = (String) error.get("code");
+                        }
+                    }
+                    if (errorCode != null) {
+                        log.info("Maya checkout error for checkoutId={}: status={} code={}", mayaCheckoutId, status, errorCode);
+                        return status + "|" + errorCode;
+                    }
+                }
+
                 log.info("Maya checkout status for checkoutId={}: {}", mayaCheckoutId, status);
                 return status;
             }
@@ -244,7 +264,7 @@ public class MayaService {
             ).getBody();
 
             if (response != null) {
-                log.info("Maya checkout details retrieved for checkoutId={}", mayaCheckoutId);
+                log.info("Maya checkout RAW details for checkoutId={}: {}", mayaCheckoutId, response);
                 return response;
             }
         } catch (Exception e) {

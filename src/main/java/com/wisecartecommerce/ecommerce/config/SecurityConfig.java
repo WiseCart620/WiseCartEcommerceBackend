@@ -73,13 +73,21 @@ public class SecurityConfig {
                         "/error",
                         "/announcements/**", "/api/announcements/**",
                         "/webhooks/maya", "/api/webhooks/maya",
-                        "/files/serve/**", "/api/files/serve/**",
+                        "/files/**", "/api/files/**",
                         "/uploads/**", "/api/uploads/**",
                         "/public/**", "/api/public/**",
                         "/storefront/settings", "/api/storefront/settings",
                         "/v3/api-docs/**",
                         "/swagger-ui/**",
-                        "/swagger-ui.html")
+                        "/swagger-ui.html",
+                        "/api/payments/verify/**",
+                        "/payments/verify/**",
+                        "/payments/failed-reason/**",
+                        "/api/payments/check-order/**",
+                        "/payments/check-order/**",
+                        "/payment/success",
+                        "/payment/failed",
+                        "/payment/cancelled")
                 .permitAll()
                 // Role-based access
                 .requestMatchers("/admin/**", "/api/admin/**").hasRole("ADMIN")

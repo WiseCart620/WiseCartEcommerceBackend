@@ -98,13 +98,16 @@ public class EmailService {
                 return;
             }
 
-            // Convert Order entity to OrderResponse DTO using the mapper
             OrderResponse orderResponse = orderMapper.toResponse(order);
 
             Context context = new Context(Locale.getDefault());
-            context.setVariable("order", orderResponse);  // Now using the DTO with productImage field
+            context.setVariable("order", orderResponse);
             context.setVariable("user", order.getUser());
             context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
+
+            // ADD THIS - Your ngrok base URL for images
+            // Since your API has context-path /api, images are served from root
+            context.setVariable("imageBaseUrl", "https://unrevertible-senaida-continentally.ngrok-free.dev");
 
             String content = templateEngine.process("email/order-confirmation", context);
             String subject = "Order Confirmation - #" + order.getOrderNumber();
@@ -132,11 +135,10 @@ public class EmailService {
                 return;
             }
 
-            // Convert Order entity to OrderResponse DTO using the mapper
             OrderResponse orderResponse = orderMapper.toResponse(order);
 
             Context context = new Context(Locale.getDefault());
-            context.setVariable("order", orderResponse);  // Now using the DTO
+            context.setVariable("order", orderResponse);
             context.setVariable("user", order.getUser());
             context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
 

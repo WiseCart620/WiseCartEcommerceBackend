@@ -1,13 +1,18 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
-import com.wisecartecommerce.ecommerce.entity.AppSettings;
-import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
-import lombok.RequiredArgsConstructor;
+import java.math.BigDecimal;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.math.BigDecimal;
+import com.wisecartecommerce.ecommerce.entity.AppSettings;
+import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequiredArgsConstructor
@@ -37,14 +42,19 @@ public class AppSettingsController {
         return ResponseEntity.ok(getOrCreateSettings());
     }
 
+
     @GetMapping("/public/storefront/settings")
     public ResponseEntity<?> getPublicSettings() {
         AppSettings s = getOrCreateSettings();
         return ResponseEntity.ok(java.util.Map.of(
                 "cartEnabled", s.isCartEnabled(),
-                "buyNowEnabled", s.isBuyNowEnabled()));
+                "buyNowEnabled", s.isBuyNowEnabled(),
+                "vatRate", s.getVatRate(),
+                "freeShippingThreshold", s.getFreeShippingThreshold()
+        ));
     }
 
+    
     @PutMapping("/admin/settings")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AppSettings> updateSettings(@RequestBody AppSettings request) {

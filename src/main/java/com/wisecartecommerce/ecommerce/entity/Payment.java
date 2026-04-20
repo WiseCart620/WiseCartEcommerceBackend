@@ -39,7 +39,6 @@ public class Payment {
     @EqualsAndHashCode.Include
     private Long id;
 
-
     @Column(name = "transaction_id", unique = true)
     private String transactionId;
 
@@ -73,6 +72,9 @@ public class Payment {
 
     @Column(name = "payer_email")
     private String payerEmail;
+
+    @Column(name = "maya_transaction_reference")
+    private String mayaTransactionReference;
 
     @Column(name = "payer_name")
     private String payerName;

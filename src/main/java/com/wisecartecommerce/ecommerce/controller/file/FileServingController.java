@@ -1,6 +1,9 @@
 package com.wisecartecommerce.ecommerce.controller.file;
 
-import lombok.extern.slf4j.Slf4j;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
@@ -8,11 +11,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/files")
@@ -26,7 +32,13 @@ public class FileServingController {
     @GetMapping("/serve")
     public ResponseEntity<Resource> serveFile(@RequestParam String path) {
         log.info("Serving file request for path: {}", path);
-        return handleFileRequest(path, false);
+
+        ResponseEntity<Resource> response = handleFileRequest(path, false);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("ngrok-skip-browser-warning", "true");
+        headers.putAll(response.getHeaders());
+
+        return new ResponseEntity<>(response.getBody(), headers, response.getStatusCode());
     }
 
     @GetMapping("/{directory}/{filename:.+}")
@@ -129,18 +141,42 @@ public class FileServingController {
 
         String lowerName = filename.toLowerCase();
 
-        if (lowerName.endsWith(".pdf")) return "application/pdf";
-        if (lowerName.endsWith(".doc")) return "application/msword";
-        if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-        if (lowerName.endsWith(".xls")) return "application/vnd.ms-excel";
-        if (lowerName.endsWith(".xlsx")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-        if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg";
-        if (lowerName.endsWith(".png")) return "image/png";
-        if (lowerName.endsWith(".gif")) return "image/gif";
-        if (lowerName.endsWith(".webp")) return "image/webp";
-        if (lowerName.endsWith(".txt")) return "text/plain";
-        if (lowerName.endsWith(".zip")) return "application/zip";
-        if (lowerName.endsWith(".csv")) return "text/csv";
+        if (lowerName.endsWith(".pdf")) {
+            return "application/pdf";
+        }
+        if (lowerName.endsWith(".doc")) {
+            return "application/msword";
+        }
+        if (lowerName.endsWith(".docx")) {
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        }
+        if (lowerName.endsWith(".xls")) {
+            return "application/vnd.ms-excel";
+        }
+        if (lowerName.endsWith(".xlsx")) {
+            return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+        }
+        if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+            return "image/jpeg";
+        }
+        if (lowerName.endsWith(".png")) {
+            return "image/png";
+        }
+        if (lowerName.endsWith(".gif")) {
+            return "image/gif";
+        }
+        if (lowerName.endsWith(".webp")) {
+            return "image/webp";
+        }
+        if (lowerName.endsWith(".txt")) {
+            return "text/plain";
+        }
+        if (lowerName.endsWith(".zip")) {
+            return "application/zip";
+        }
+        if (lowerName.endsWith(".csv")) {
+            return "text/csv";
+        }
 
         return "application/octet-stream";
     }

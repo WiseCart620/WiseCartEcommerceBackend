@@ -16,12 +16,19 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        // Handle product images from uploads-dev
         String uploadLocation = "file:" + uploadDir + "/";
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(uploadLocation)
                 .setCacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePublic())
                 .resourceChain(true);
 
+        // Specifically handle products folder for cleaner URLs
+        registry.addResourceHandler("/images/products/**")
+                .addResourceLocations("file:" + uploadDir + "/products/")
+                .setCacheControl(CacheControl.maxAge(30, TimeUnit.DAYS).cachePublic());
+
+        // Swagger handlers (keep these)
         registry.addResourceHandler("/swagger-ui.html")
                 .addResourceLocations("classpath:/META-INF/resources/");
         registry.addResourceHandler("/webjars/**")

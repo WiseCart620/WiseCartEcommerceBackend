@@ -28,6 +28,7 @@ import com.wisecartecommerce.ecommerce.Dto.Response.FlashShippingRateResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.entity.Address;
+import com.wisecartecommerce.ecommerce.entity.AppSettings;
 import com.wisecartecommerce.ecommerce.entity.Cart;
 import com.wisecartecommerce.ecommerce.entity.CartItem;
 import com.wisecartecommerce.ecommerce.entity.Coupon;
@@ -42,6 +43,7 @@ import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.RateLimitException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
+import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
 import com.wisecartecommerce.ecommerce.repository.CartRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
@@ -89,10 +91,10 @@ public class OrderServiceImpl implements OrderService {
     private final ShippingWeightCalculator weightCalculator;
     private final CouponValidator couponValidator;
     private final RateLimitService rateLimitService;
+    private final AppSettingsRepository appSettingsRepository;
 
     // ── Constants ──────────────────────────────────────────────────────────────
-    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("2500");
-    private static final BigDecimal VAT_RATE = new BigDecimal("0.12");
+    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
     private static final BigDecimal FALLBACK_SHIPPING = new BigDecimal("150.00");
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -164,7 +166,6 @@ public class OrderServiceImpl implements OrderService {
                     .build();
 
             orderItems.add(orderItem);
-            product.setSoldCount(product.getSoldCount() + cartItem.getQuantity());
         }
 
         BigDecimal subtotal = cart.getSubtotal();
@@ -201,10 +202,11 @@ public class OrderServiceImpl implements OrderService {
                     cart.getItems());
         }
 
-        // ── Tax (12% VAT on subtotal after discount) ───────────────────────────
+// ── Tax (VAT on subtotal after discount) ───────────────────────────────
         BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+        BigDecimal vatRate = getVatRateFromSettings(); // Add this helper method
         BigDecimal taxAmount = taxableAmount
-                .multiply(VAT_RATE)
+                .multiply(vatRate)
                 .setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
@@ -252,7 +254,6 @@ public class OrderServiceImpl implements OrderService {
         int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
         int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
         assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
-        log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
         saved = orderRepository.save(saved);
 
 // ── NOW update stock (after order is successfully saved) ──────────────
@@ -278,27 +279,29 @@ public class OrderServiceImpl implements OrderService {
             recordCouponUsage(couponResult.getCoupon(), user, null, saved);
         }
 
-        boolean isMaya = "maya".equalsIgnoreCase(request.getPaymentMethod());
+        cart.getItems().clear();
+        cart.setSubtotal(BigDecimal.ZERO);
+        cart.setTotal(BigDecimal.ZERO);
+        cart.setDiscountAmount(BigDecimal.ZERO);
+        cart.clearCoupon();
+        cartRepository.save(cart);
 
-        if (!isMaya) {
-            cart.getItems().clear();
-            cart.setSubtotal(BigDecimal.ZERO);
-            cart.setTotal(BigDecimal.ZERO);
-            cart.setDiscountAmount(BigDecimal.ZERO);
-            cart.clearCoupon();
-            cartRepository.save(cart);
-
+        try {
             emailService.sendOrderConfirmationEmail(saved);
-            sendOrderStatusNotification(saved,
-                    "Order Placed Successfully ✅",
-                    "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
-            notificationService.createAdminNotification(
-                    "New Order Received",
-                    "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
-                    "ORDER",
-                    saved.getId(),
-                    "ORDER");
+            log.info("Order confirmation email sent for order: {}", saved.getOrderNumber());
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for order {}: {}",
+                    saved.getOrderNumber(), e.getMessage(), e);
         }
+        sendOrderStatusNotification(saved,
+                "Order Placed Successfully ✅",
+                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
+        notificationService.createAdminNotification(
+                "New Order Received",
+                "Order #" + saved.getOrderNumber() + " was placed by " + user.getEmail() + ".",
+                "ORDER",
+                saved.getId(),
+                "ORDER");
         log.info("Order created: {} | user: {} | discount: ₱{} | shipping: ₱{}",
                 saved.getOrderNumber(), user.getEmail(), discountAmount, shippingAmount);
 
@@ -363,7 +366,6 @@ public class OrderServiceImpl implements OrderService {
                     .build();
 
             orderItems.add(orderItem);
-            product.setSoldCount(product.getSoldCount() + cartItem.getQuantity());
         }
 
         BigDecimal subtotal = cart.getSubtotal();
@@ -396,7 +398,8 @@ public class OrderServiceImpl implements OrderService {
         }
 
         BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
-        BigDecimal taxAmount = taxableAmount.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal vatRate = getVatRateFromSettings();
+        BigDecimal taxAmount = taxableAmount.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
         boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
@@ -469,7 +472,13 @@ public class OrderServiceImpl implements OrderService {
         cart.clearCoupon();
         cartRepository.save(cart);
 
-        emailService.sendOrderConfirmationEmail(saved);
+        try {
+            emailService.sendOrderConfirmationEmail(saved);
+            log.info("Order confirmation email sent successfully for order: {}", saved.getOrderNumber());
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for order {}: {}",
+                    saved.getOrderNumber(), e.getMessage(), e);
+        }
         sendOrderStatusNotification(saved,
                 "Order Placed Successfully ✅",
                 "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
@@ -619,8 +628,8 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // ── Tax and final amount ──────────────────────────────────────────────
-        BigDecimal taxAmount = taxableSubtotal.multiply(VAT_RATE).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal vatRate = getVatRateFromSettings();
+        BigDecimal taxAmount = taxableSubtotal.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableSubtotal.add(shippingAmount).add(taxAmount);
 
         // ── Create and save order ─────────────────────────────────────────────
@@ -652,15 +661,11 @@ public class OrderServiceImpl implements OrderService {
         Order saved = orderRepository.save(order);
         orderRepository.flush();
 
-        // ── Assign Flash Express order number ─────────────────────────────────
         int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
         int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
         assignFlashOrderNumber(saved, shippingAddress, weight, category);
-        log.info("Final order number after Flash assignment: {}", saved.getOrderNumber());
         saved = orderRepository.save(saved);
 
-        // ── NOW update stock (after order is successfully saved) ──────────────
-        // Fix: Use direct retrieval without lambda that requires effectively final variable
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
             Product product = productRepository.findById(entry.getKey()).orElse(null);
             if (product != null) {
@@ -678,13 +683,17 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        // ── Record coupon usage ───────────────────────────────────────────────
         if (couponResult != null) {
             recordCouponUsage(couponResult.getCoupon(), null, request.getGuestEmail(), saved);
         }
 
-        // ── Send notifications ────────────────────────────────────────────────
-        emailService.sendOrderConfirmationEmail(saved);
+        try {
+            emailService.sendOrderConfirmationEmail(saved);
+            log.info("Order confirmation email sent successfully for guest order: {}", saved.getOrderNumber());
+        } catch (Exception e) {
+            log.error("Failed to send order confirmation email for guest order {}: {}",
+                    saved.getOrderNumber(), e.getMessage(), e);
+        }
         notificationService.createAdminNotification(
                 "New Guest Order Received",
                 "Guest order #" + saved.getOrderNumber() + " was placed by " + request.getGuestEmail() + ".",
@@ -698,7 +707,6 @@ public class OrderServiceImpl implements OrderService {
         return mapToGuestOrderResponse(saved);
     }
 
-// Helper method to get quantity for a product from order items
     private int getQuantityForProduct(List<OrderItem> items, Long productId) {
         return items.stream()
                 .filter(item -> item.getProduct().getId().equals(productId) && item.getVariation() == null)
@@ -722,9 +730,6 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // Shipping resolution
-    // ══════════════════════════════════════════════════════════════════════════
     private BigDecimal resolveShippingFee(
             Integer expressCategory,
             Address destination,
@@ -750,6 +755,24 @@ public class OrderServiceImpl implements OrderService {
             log.warn("Flash Express unavailable, using fallback: {}", e.getMessage());
             return FALLBACK_SHIPPING;
         }
+    }
+
+    @Override
+    public void sendPostPaymentConfirmationEmail(Long orderId) {
+        orderRepository.findById(orderId).ifPresent(order -> {
+            // Only send if order is in a confirmed state
+            if (order.getPaymentStatus() == null
+                    || !"COMPLETED".equals(order.getPaymentStatus().name())) {
+                log.info("Skipping email - order {} not yet COMPLETED", orderId);
+                return;
+            }
+            try {
+                emailService.sendOrderConfirmationEmail(order);
+                log.info("Post-payment confirmation email sent for orderId={}", orderId);
+            } catch (Exception e) {
+                log.error("Email send failed for orderId={}: {}", orderId, e.getMessage());
+            }
+        });
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -1233,17 +1256,14 @@ public class OrderServiceImpl implements OrderService {
                     saved, shippingAddress, weightGrams, expressCategory);
 
             if (flashOrder != null && flashOrder.getPno() != null) {
-                saved.setOrderNumber(flashOrder.getPno());
                 saved.setTrackingNumber(flashOrder.getPno());
                 saved.setShippingCarrier("Flash Express");
-                log.info("Flash order created: PNO={}", flashOrder.getPno());
+                log.info("Flash order created: PNO={} for order={}", flashOrder.getPno(), saved.getOrderNumber());
             } else {
-                saved.setOrderNumber(generateOrderNumber());
-                log.warn("Flash order creation returned null, using local order number");
+                log.warn("Flash order creation returned null for order={}", saved.getOrderNumber());
             }
         } catch (Exception e) {
-            saved.setOrderNumber(generateOrderNumber());
-            log.warn("Flash order creation failed, using local order number: {}", e.getMessage());
+            log.warn("Flash order creation failed for order={}: {}", saved.getOrderNumber(), e.getMessage());
         }
     }
 
@@ -1414,9 +1434,16 @@ public class OrderServiceImpl implements OrderService {
                 .findFirstByOrderIdAndStatusOrderByCreatedAtDesc(orderId, PaymentStatus.COMPLETED)
                 .orElseThrow(() -> new CustomException("No completed payment found for this order"));
 
-        // ✅ Use transactionReferenceNo (stored as mayaPaymentId) for refund
-        String transactionReferenceNo = payment.getMayaPaymentId();
-        if (transactionReferenceNo == null) {
+        // ✅ FIRST TRY: Use mayaTransactionReference (the correct TXN format)
+        String transactionReferenceNo = payment.getMayaTransactionReference();
+
+        // ✅ SECOND TRY: Fallback to mayaPaymentId (checkout ID) if transaction reference not found
+        if (transactionReferenceNo == null || transactionReferenceNo.isBlank()) {
+            transactionReferenceNo = payment.getMayaPaymentId();
+            log.warn("No transaction reference found for refund, using mayaPaymentId as fallback: {}", transactionReferenceNo);
+        }
+
+        if (transactionReferenceNo == null || transactionReferenceNo.isBlank()) {
             throw new CustomException("Maya transaction reference not found — contact support");
         }
 
@@ -1453,7 +1480,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         try {
-            // ✅ Call Maya refund with transactionReferenceNo
+            // Call Maya refund with transactionReferenceNo
             Map<String, Object> refundResponse = mayaRefundService.refund(transactionReferenceNo, refundAmount, reason);
 
             payment.setStatus(PaymentStatus.REFUNDED);
@@ -1509,17 +1536,25 @@ public class OrderServiceImpl implements OrderService {
             throw new CustomException("COD orders require manual cancellation — please contact support");
         }
 
-        // ✅ Get the transaction reference from the payment record
+        // ✅ Get the payment record
         Payment payment = paymentRepository
                 .findFirstByOrderIdAndStatusOrderByCreatedAtDesc(orderId, PaymentStatus.COMPLETED)
                 .orElseThrow(() -> new CustomException("No completed payment found for this order"));
 
-        String transactionReferenceNo = payment.getMayaPaymentId();
-        if (transactionReferenceNo == null) {
+        // ✅ FIRST TRY: Use mayaTransactionReference (the correct TXN format)
+        String transactionReferenceNo = payment.getMayaTransactionReference();
+
+        // ✅ SECOND TRY: Fallback to mayaPaymentId (checkout ID) if transaction reference not found
+        if (transactionReferenceNo == null || transactionReferenceNo.isBlank()) {
+            transactionReferenceNo = payment.getMayaPaymentId();
+            log.warn("No transaction reference found, using mayaPaymentId as fallback: {}", transactionReferenceNo);
+        }
+
+        if (transactionReferenceNo == null || transactionReferenceNo.isBlank()) {
             throw new CustomException("Maya transaction reference not found — contact support");
         }
 
-        // ✅ Check if void is allowed (same day before midnight GMT+8)
+        // Check if void is allowed (same day before midnight GMT+8)
         if (order.getCreatedAt() != null) {
             LocalDateTime transactionDate = order.getCreatedAt();
             LocalDateTime voidDeadline = transactionDate.toLocalDate().plusDays(1).atStartOfDay();
@@ -1533,7 +1568,7 @@ public class OrderServiceImpl implements OrderService {
         log.info("Using transactionReferenceNo for void: {} for order {}", transactionReferenceNo, order.getOrderNumber());
 
         try {
-            // ✅ Call P3 void endpoint
+            // Call P3 void endpoint
             Map<String, Object> voidResponse = mayaRefundService.voidPayment(transactionReferenceNo, reason);
 
             // Update local records
@@ -1572,44 +1607,116 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
+    private OrderResponse cancelCodOrder(Order order, User user, String reason) {
+        String pno = order.getTrackingNumber();
+        if ((pno == null || pno.isBlank()) && order.getOrderNumber() != null && order.getOrderNumber().startsWith("P")) {
+            pno = order.getOrderNumber();
+        }
+
+        if (pno != null && pno.startsWith("P")) {
+            try {
+                FlashTrackingResponse flashData = flashShippingService.trackOrder(pno);
+                if (flashData != null && flashData.getState() != null
+                        && flashData.getState() >= 1
+                        && flashData.getState() != 99
+                        && flashData.getState() != 0) {
+                    throw new CustomException("Your order has already been picked up by the courier and cannot be cancelled.");
+                }
+            } catch (CustomException e) {
+                throw e;
+            } catch (Exception e) {
+                log.warn("Could not verify Flash state for COD PNO={}: {}", pno, e.getMessage());
+            }
+
+            try {
+                flashShippingService.cancelOrder(pno);
+                log.info("Flash Express COD order cancelled: PNO={}", pno);
+            } catch (CustomException e) {
+                String msg = e.getMessage() != null ? e.getMessage() : "";
+                if (msg.contains("1015") || msg.toLowerCase().contains("picked up")) {
+                    throw new CustomException("Your order has already been picked up and cannot be cancelled.");
+                }
+                log.warn("Flash cancel error for COD PNO={}: {}", pno, msg);
+            } catch (Exception e) {
+                log.warn("Flash cancel exception for COD PNO={}: {}", pno, e.getMessage());
+            }
+        }
+
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancelledAt(LocalDateTime.now());
+        restoreStock(order);
+        Order saved = orderRepository.save(order);
+
+        emailService.sendOrderStatusUpdateEmail(saved);
+        sendOrderStatusNotification(saved,
+                "Order Cancelled",
+                "Your COD order #" + saved.getOrderNumber() + " has been cancelled.");
+        log.info("COD order {} cancelled by customer {}", saved.getOrderNumber(), user.getEmail());
+
+        return mapToOrderResponse(saved);
+    }
+
     @Override
     @Transactional
     public OrderResponse cancelMayaPayment(Long orderId, String reason, BigDecimal amount) {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-
         User user = getCurrentUser();
         if (!order.getUser().getId().equals(user.getId())) {
             throw new CustomException("You can only cancel your own orders");
         }
 
-        // Check if order is in a cancellable state
         if (order.getStatus() != OrderStatus.PENDING && order.getStatus() != OrderStatus.PROCESSING) {
             throw new CustomException("Order cannot be cancelled once it has been shipped or delivered");
         }
-
-        // COD orders require manual processing
         if ("cod".equalsIgnoreCase(order.getPaymentMethod())) {
-            throw new CustomException("COD orders require manual cancellation — please contact support");
+            return cancelCodOrder(order, user, reason);
         }
 
-        // Check if it's a same-day transaction
         if (order.getCreatedAt() != null) {
             LocalDateTime transactionDate = order.getCreatedAt();
             LocalDateTime nextDayStart = transactionDate.toLocalDate().plusDays(1).atStartOfDay();
 
             if (LocalDateTime.now().isBefore(nextDayStart)) {
-                // Same day - use void
+                // Same day — void handles its own cancellation internally
                 log.info("Using void for same-day cancellation: orderId={}", orderId);
                 return requestMayaVoid(orderId, reason);
             } else {
-                // Next day or later - use refund
                 log.info("Using refund for next-day cancellation: orderId={}", orderId);
+                order.setStatus(OrderStatus.CANCELLED);
+                order.setCancelledAt(LocalDateTime.now());
+                restoreStock(order);
+                orderRepository.save(order);
+
                 return requestMayaRefund(orderId, reason, amount);
             }
         }
 
-        // Fallback to refund if date is null
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setCancelledAt(LocalDateTime.now());
+        restoreStock(order);
+        orderRepository.save(order);
+
         return requestMayaRefund(orderId, reason, amount);
+    }
+
+    private BigDecimal getVatRateFromSettings() {
+        try {
+            AppSettings settings = appSettingsRepository.findAll().stream()
+                    .findFirst()
+                    .orElse(null);
+
+            if (settings != null && settings.getVatRate() != null) {
+                BigDecimal rate = settings.getVatRate();
+                log.debug("Using VAT rate from settings: {}%", rate.multiply(new BigDecimal("100")));
+                return rate;
+            }
+
+            log.warn("No AppSettings found, using 0% VAT");
+            return BigDecimal.ZERO;
+        } catch (Exception e) {
+            log.warn("Failed to fetch VAT rate from settings, using 0%", e);
+            return BigDecimal.ZERO;
+        }
     }
 }

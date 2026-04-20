@@ -64,6 +64,9 @@ public interface OrderService {
     OrderResponse requestMayaRefund(Long orderId, String reason, BigDecimal customAmount);
 
     OrderResponse requestMayaVoid(Long orderId, String reason);
-    
+
     OrderResponse cancelMayaPayment(Long orderId, String reason, BigDecimal amount);
+
+    void sendPostPaymentConfirmationEmail(Long orderId);
+
 }

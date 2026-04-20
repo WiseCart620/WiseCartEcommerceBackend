@@ -130,7 +130,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         // File serving endpoints
-        if (uri.startsWith("/files/serve/") || uri.startsWith("/api/files/serve/")
+        if (uri.startsWith("/files")
+                || uri.startsWith("/api/files")
+                || uri.startsWith("/uploads")
+                || uri.startsWith("/api/uploads")
                 || uri.startsWith("/uploads/") || uri.startsWith("/api/uploads/")) {
             return true;
         }

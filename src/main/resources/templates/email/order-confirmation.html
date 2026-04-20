@@ -6,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Order Confirmation</title>
   <style>
-    /* Reset styles */
     * {
       margin: 0;
       padding: 0;
@@ -17,9 +16,11 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
       background: #f0f4f8;
       margin: 0;
-      padding: 20px;
+      padding: 12px;
       line-height: 1.5;
       color: #2d3748;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
     }
 
     .container {
@@ -35,13 +36,12 @@
     .header {
       background: linear-gradient(135deg, #1e3c8a 0%, #2563eb 100%);
       color: white;
-      padding: 40px 30px;
+      padding: 36px 24px;
       text-align: center;
     }
 
     .header h1 {
-      margin: 0;
-      font-size: 28px;
+      font-size: 24px;
       font-weight: 600;
       letter-spacing: -0.5px;
     }
@@ -49,52 +49,50 @@
     .header p {
       margin: 8px 0 0;
       opacity: 0.9;
-      font-size: 16px;
+      font-size: 15px;
     }
 
     /* Body */
     .body {
-      padding: 40px 30px;
+      padding: 32px 24px;
     }
 
-    /* Greeting */
     .greeting {
-      font-size: 16px;
-      margin-bottom: 25px;
+      font-size: 15px;
+      margin-bottom: 24px;
     }
 
     .greeting p {
       margin-bottom: 8px;
     }
 
-    /* Section styles */
     .section {
-      margin-bottom: 30px;
+      margin-bottom: 28px;
     }
 
     .section-title {
-      font-size: 16px;
-      font-weight: 600;
+      font-size: 13px;
+      font-weight: 700;
       color: #1e3c8a;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 15px;
+      letter-spacing: 0.8px;
+      margin-bottom: 14px;
       padding-bottom: 8px;
       border-bottom: 2px solid #e2e8f0;
     }
 
-    /* Order info box */
+    /* Order box grid — stacks on mobile */
     .order-box {
       background: #f8fafc;
       border-radius: 10px;
-      padding: 20px;
+      padding: 16px;
       border: 1px solid #e2e8f0;
     }
 
     .order-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
+      gap: 12px;
     }
 
     .order-item {
@@ -105,7 +103,7 @@
     }
 
     .order-item .label {
-      font-size: 12px;
+      font-size: 11px;
       color: #64748b;
       margin-bottom: 4px;
       text-transform: uppercase;
@@ -113,22 +111,23 @@
     }
 
     .order-item .value {
-      font-size: 18px;
+      font-size: 15px;
       font-weight: 600;
       color: #0f172a;
+      word-break: break-word;
     }
 
     /* Product list */
     .product-list {
-      background: #ffffff;
       border-radius: 10px;
       border: 1px solid #e2e8f0;
       overflow: hidden;
     }
 
     .product-item {
-      display: flex;
-      padding: 16px 20px;
+      display: table;
+      width: 100%;
+      padding: 14px 16px;
       border-bottom: 1px solid #e2e8f0;
       background: white;
     }
@@ -137,78 +136,88 @@
       border-bottom: none;
     }
 
+    .product-image-cell {
+      display: table-cell;
+      width: 60px;
+      vertical-align: top;
+      padding-right: 14px;
+    }
+
     .product-image {
       width: 60px;
       height: 60px;
       background: #f1f5f9;
       border-radius: 8px;
-      margin-right: 15px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
       overflow: hidden;
+      text-align: center;
+      line-height: 60px;
+      font-size: 28px;
     }
 
     .product-image img {
-      width: 100%;
-      height: 100%;
+      width: 60px;
+      height: 60px;
       object-fit: cover;
+      border-radius: 8px;
+      display: block;
     }
 
-    .product-image-placeholder {
-      color: #64748b;
-      font-size: 24px;
-    }
-
-    .product-details {
-      flex: 1;
+    .product-details-cell {
+      display: table-cell;
+      vertical-align: top;
     }
 
     .product-name {
       font-weight: 600;
       color: #0f172a;
-      margin-bottom: 5px;
-      font-size: 15px;
+      margin-bottom: 4px;
+      font-size: 14px;
+      line-height: 1.4;
     }
 
     .product-meta {
-      font-size: 13px;
+      font-size: 12px;
       color: #64748b;
-      display: flex;
-      gap: 15px;
     }
 
-    .product-price {
+    .product-meta span {
+      display: inline-block;
+      margin-right: 10px;
+    }
+
+    .product-price-cell {
+      display: table-cell;
+      vertical-align: top;
       text-align: right;
-      min-width: 120px;
+      white-space: nowrap;
+      padding-left: 10px;
     }
 
-    .product-price .current {
-      font-weight: 600;
-      color: #0f172a;
-      font-size: 16px;
+    .product-price-cell .unit {
+      font-size: 12px;
+      color: #64748b;
     }
 
-    .product-total {
+    .product-price-cell .total {
       font-weight: 700;
       color: #1e3c8a;
-      font-size: 16px;
+      font-size: 15px;
       margin-top: 4px;
     }
 
-    /* Summary box */
+    /* Summary */
     .summary-box {
       background: #f8fafc;
       border-radius: 10px;
-      padding: 20px;
-      margin-top: 20px;
+      padding: 16px 20px;
+      margin-top: 16px;
       border: 1px solid #e2e8f0;
     }
 
     .summary-row {
-      display: flex;
-      justify-content: space-between;
-      padding: 10px 0;
+      display: table;
+      width: 100%;
+      padding: 9px 0;
       border-bottom: 1px solid #e2e8f0;
     }
 
@@ -216,19 +225,23 @@
       border-bottom: none;
       font-weight: 700;
       color: #0f172a;
-      font-size: 16px;
     }
 
     .summary-label {
+      display: table-cell;
       color: #475569;
+      font-size: 14px;
     }
 
     .summary-value {
+      display: table-cell;
+      text-align: right;
       font-weight: 600;
+      font-size: 14px;
     }
 
     .total-value {
-      font-size: 20px;
+      font-size: 17px;
       color: #1e3c8a;
     }
 
@@ -236,7 +249,7 @@
       color: #059669;
     }
 
-    /* Tracking box */
+    /* Tracking */
     .tracking-box {
       background: #eff6ff;
       border: 1px solid #bfdbfe;
@@ -245,48 +258,65 @@
       margin: 20px 0;
     }
 
-    .tracking-header {
+    .tracking-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1e3c8a;
+      margin-bottom: 14px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
+    }
+
+    .tracking-number-box {
+      background: white;
+      border: 2px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+      margin-bottom: 14px;
+    }
+
+    .tracking-number-box p {
+      font-size: 13px;
+      color: #1e3c8a;
+      font-weight: 600;
       margin-bottom: 10px;
     }
 
-    .tracking-header svg {
-      width: 20px;
-      height: 20px;
-      color: #1e3c8a;
-    }
-
-    .tracking-header h3 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #1e3c8a;
-      margin: 0;
-    }
-
     .tracking-number {
-      font-size: 20px;
+      font-size: 22px;
       font-weight: 700;
-      color: #0f172a;
-      margin: 10px 0;
-      letter-spacing: 1px;
+      color: #1e3c8a;
+      letter-spacing: 2px;
       font-family: monospace;
       word-break: break-all;
+      background: #f0f4ff;
+      padding: 12px;
+      border-radius: 6px;
+      display: block;
     }
 
-    .tracking-link {
-      font-size: 13px;
-    }
-
-    .tracking-link a {
-      color: #2563eb;
+    .track-btn {
+      display: block;
+      background: #1e3c8a;
+      color: white !important;
+      padding: 13px 24px;
+      border-radius: 8px;
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
+      font-size: 14px;
+      text-align: center;
+      margin-bottom: 12px;
     }
 
-    .tracking-link a:hover {
-      text-decoration: underline;
+    .tracking-hint {
+      font-size: 12px;
+      color: #475569;
+      text-align: center;
+      background: #f8fafc;
+      padding: 10px;
+      border-radius: 6px;
     }
 
     /* Shipping info */
@@ -299,28 +329,28 @@
     }
 
     .shipping-row {
-      display: flex;
-      justify-content: space-between;
+      display: table;
+      width: 100%;
       margin-bottom: 10px;
     }
 
-    .shipping-row:last-child {
-      margin-bottom: 0;
-    }
-
     .shipping-label {
+      display: table-cell;
       color: #475569;
-      font-size: 14px;
+      font-size: 13px;
+      width: 45%;
     }
 
     .shipping-value {
+      display: table-cell;
       font-weight: 600;
       color: #0f172a;
+      font-size: 13px;
       text-align: right;
     }
 
     .address-block {
-      margin-top: 15px;
+      margin-top: 14px;
       padding: 12px;
       background: white;
       border-radius: 8px;
@@ -329,90 +359,150 @@
 
     .address-block p {
       margin: 3px 0;
-      font-size: 14px;
+      font-size: 13px;
       color: #334155;
+      line-height: 1.6;
     }
 
-    /* Contact info */
+    /* Contact */
     .contact-info {
       background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
       border-radius: 10px;
-      padding: 20px;
-      margin: 30px 0 20px;
+      padding: 24px 20px;
+      margin: 28px 0 20px;
       border: 1px solid #cbd5e1;
       text-align: center;
     }
 
     .contact-info p {
       color: #1e293b;
-      font-size: 15px;
-      margin-bottom: 10px;
+      font-size: 14px;
+      margin-bottom: 8px;
     }
 
     .phone-number {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 700;
       color: #1e3c8a;
       letter-spacing: 1px;
+      margin: 6px 0;
     }
 
     .contact-note {
-      font-size: 13px;
+      font-size: 12px;
       color: #64748b;
-      margin-top: 8px;
+      margin-top: 6px;
+    }
+
+    .btn {
+      display: block;
+      background: #1e3c8a;
+      color: white !important;
+      padding: 13px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 14px;
+      margin: 16px 0 4px;
+      text-align: center;
     }
 
     /* Footer */
     .footer {
       background: #f8fafc;
-      padding: 30px;
+      padding: 24px 20px;
       text-align: center;
-      font-size: 13px;
+      font-size: 12px;
       color: #64748b;
       border-top: 1px solid #e2e8f0;
     }
 
     .footer p {
-      margin-bottom: 5px;
+      margin-bottom: 4px;
     }
 
     .copyright {
-      margin-top: 15px;
-      font-size: 12px;
+      margin-top: 14px;
+      font-size: 11px;
       color: #94a3b8;
     }
 
-    /* Button */
-    .btn {
-      display: inline-block;
-      background: #1e3c8a;
-      color: white;
-      padding: 12px 32px;
-      border-radius: 8px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 14px;
-      margin: 20px 0 10px;
-      transition: background 0.2s;
-    }
+    /* ── Mobile overrides ── */
+    @media only screen and (max-width: 480px) {
+      body {
+        padding: 0;
+      }
 
-    .btn:hover {
-      background: #2563eb;
-    }
+      .container {
+        border-radius: 0;
+      }
 
-    /* Utility */
-    .text-right {
-      text-align: right;
-    }
+      .header {
+        padding: 28px 16px;
+      }
 
-    .mt-20 {
-      margin-top: 20px;
+      .header h1 {
+        font-size: 20px;
+      }
+
+      .body {
+        padding: 24px 16px;
+      }
+
+      .order-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .order-item .value {
+        font-size: 13px;
+      }
+
+      /* Stack product rows on very small screens */
+      .product-item {
+        display: block;
+        padding: 14px 12px;
+      }
+
+      .product-image-cell {
+        display: inline-block;
+        vertical-align: top;
+      }
+
+      .product-details-cell {
+        display: inline-block;
+        width: calc(100% - 80px);
+        vertical-align: top;
+      }
+
+      .product-price-cell {
+        display: block;
+        text-align: right;
+        padding: 8px 0 0;
+        border-top: 1px dashed #e2e8f0;
+        margin-top: 8px;
+      }
+
+      .tracking-number {
+        font-size: 16px;
+        letter-spacing: 1px;
+      }
+
+      .phone-number {
+        font-size: 18px;
+      }
+
+      .summary-label,
+      .summary-value {
+        font-size: 13px;
+      }
     }
   </style>
 </head>
 
 <body>
   <div class="container">
+
     <!-- Header -->
     <div class="header">
       <h1>✓ Order Confirmed</h1>
@@ -421,20 +511,20 @@
 
     <!-- Body -->
     <div class="body">
-      <!-- Greeting - Updated to use userName from OrderResponse -->
+
+      <!-- Greeting -->
       <div class="greeting">
         <p th:if="${order.userName != null and order.userName != 'Customer'}">
-          Hi <span th:text="${order.userName}">John Doe</span>,
+          Hi <strong th:text="${order.userName}">John Doe</strong>,
         </p>
         <p th:if="${order.userName == null or order.userName == 'Customer'}">
-          Hi <span
-            th:text="${order.guestFirstName != null ? order.guestFirstName + ' ' + order.guestLastName : 'there'}">Guest
-            Customer</span>,
+          Hi <strong
+            th:text="${order.guestFirstName != null ? order.guestFirstName + ' ' + order.guestLastName : 'there'}">Guest</strong>,
         </p>
-        <p>Great news! Your order has been successfully placed and is now being prepared for shipment.</p>
+        <p>Your order has been successfully placed and is now being prepared for shipment.</p>
       </div>
 
-      <!-- Order Summary Section -->
+      <!-- Order Summary -->
       <div class="section">
         <h2 class="section-title">Order Summary</h2>
         <div class="order-box">
@@ -452,38 +542,50 @@
               <div class="value" th:text="${#temporals.format(order.createdAt, 'MMM dd, yyyy')}">Mar 03, 2026</div>
             </div>
             <div class="order-item">
-              <div class="label">Order Status</div>
+              <div class="label">Status</div>
               <div class="value" th:text="${order.status}">PENDING</div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Products Section -->
       <div class="section">
         <h2 class="section-title">Items Ordered</h2>
         <div class="product-list">
-          <!-- Product items using OrderItemResponse structure -->
           <div class="product-item" th:each="item : ${order.items}">
-            <div class="product-image">
-              <img th:if="${item.productImage != null}" th:src="${item.productImage}" alt="" />
-              <span th:if="${item.productImage == null}" class="product-image-placeholder">📦</span>
+
+
+            <div class="product-image-cell">
+              <div class="product-image">
+                <img th:if="${item.productImage != null}" th:src="${imageBaseUrl + '/api/files/serve?path=products/' + item.productImage}" alt="${item.productName}"
+                  style="width:60px;height:60px;object-fit:cover;border-radius:8px;display:block;"
+                  onerror="this.style.display='none'; this.parentElement.innerHTML='<span style=&quot;display:inline-block;width:60px;height:60px;line-height:60px;text-align:center;font-size:32px;background:#f1f5f9;border-radius:8px;&quot;>📦</span>';" />
+
+                <span th:if="${item.productImage == null}"
+                  style="display:inline-block;width:60px;height:60px;line-height:60px;text-align:center;font-size:32px;background:#f1f5f9;border-radius:8px;">
+                  📦
+                </span>
+              </div>
             </div>
-            <div class="product-details">
+
+
+            <div class="product-details-cell">
               <div class="product-name" th:text="${item.productName}">Product Name</div>
               <div class="product-meta">
-                <span th:text="'Qty: ' + ${item.quantity}">Qty: 2</span>
+                <span th:text="'Qty: ' + ${item.quantity}">Qty: 1</span>
                 <span th:if="${item.variationName != null}" th:text="${item.variationName}">Size: M</span>
               </div>
             </div>
-            <div class="product-price">
-              <div class="current" th:text="'₱' + ${#numbers.formatDecimal(item.price, 1, 2)}">₱500.00</div>
-              <div class="product-total" th:text="'₱' + ${#numbers.formatDecimal(item.subtotal, 1, 2)}">₱1,000.00</div>
+
+            <div class="product-price-cell">
+              <div class="unit" th:text="'₱' + ${#numbers.formatDecimal(item.price, 1, 2)}">₱500.00</div>
+              <div class="total" th:text="'₱' + ${#numbers.formatDecimal(item.subtotal, 1, 2)}">₱500.00</div>
             </div>
+
           </div>
         </div>
 
-        <!-- Price Summary using OrderResponse fields -->
+        <!-- Price Summary -->
         <div class="summary-box">
           <div class="summary-row">
             <span class="summary-label">Subtotal</span>
@@ -501,66 +603,48 @@
               th:text="'₱' + ${#numbers.formatDecimal(order.shippingAmount, 1, 2)}">₱79.00</span>
           </div>
           <div class="summary-row" th:if="${order.taxAmount != null and order.taxAmount > 0}">
-            <span class="summary-label">Tax (12% VAT)</span>
-            <span class="summary-value" th:text="'₱' + ${#numbers.formatDecimal(order.taxAmount, 1, 2)}">₱264.00</span>
+            <span class="summary-label">Tax (VAT)</span>
+            <span class="summary-value" th:text="'₱' + ${#numbers.formatDecimal(order.taxAmount, 1, 2)}">₱0.00</span>
           </div>
           <div class="summary-row">
             <span class="summary-label">Total Amount</span>
             <span class="summary-value total-value"
-              th:text="'₱' + ${#numbers.formatDecimal(order.finalAmount, 1, 2)}">₱2,279.00</span>
+              th:text="'₱' + ${#numbers.formatDecimal(order.finalAmount, 1, 2)}">₱2,179.00</span>
           </div>
         </div>
       </div>
 
-      <!-- Tracking Information -->
+      <!-- Flash Tracking -->
       <div class="tracking-box" th:if="${order.trackingNumber != null and order.trackingNumber.startsWith('P')}">
-        <div class="tracking-header">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2v20M2 12h20" stroke="#1e3c8a" stroke-linecap="round" />
-          </svg>
-          <h3>Flash Express Tracking</h3>
+        <div class="tracking-title">🚚 Flash Express Tracking</div>
+        <div class="tracking-number-box">
+          <p>Your Tracking Number</p>
+          <span class="tracking-number" th:text="${order.trackingNumber}">P612610SCBAA</span>
         </div>
-
-        <div
-          style="background: white; border: 2px solid #bfdbfe; border-radius: 8px; padding: 20px; text-align: center; margin: 15px 0;">
-          <p style="margin-bottom: 15px; color: #1e3c8a; font-weight: 600;">Your Flash Express Tracking Number:</p>
-          <div
-            style="font-size: 28px; font-weight: 700; color: #1e3c8a; letter-spacing: 2px; font-family: monospace; word-break: break-all; background: #f0f4ff; padding: 15px; border-radius: 8px;"
-            th:text="${order.trackingNumber}">P612610SCBAA</div>
+        <a href="https://www.flashexpress.ph/fle/tracking" target="_blank" class="track-btn">
+          Track on Flash Express →
+        </a>
+        <div class="tracking-hint">
+          Visit the Flash Express website and enter the tracking number above.
         </div>
-
-        <div style="text-align: center; margin: 20px 0;">
-          <a href="https://www.flashexpress.ph/fle/tracking" target="_blank"
-            style="display: inline-block; background: #1e3c8a; color: white; padding: 12px 30px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 16px;">
-            Track on Flash Express Website →
-          </a>
-        </div>
-
-        <p
-          style="font-size: 13px; color: #475569; text-align: center; background: #f8fafc; padding: 10px; border-radius: 6px;">
-          <strong>How to track:</strong> Go to the Flash Express tracking page and enter your tracking number above.
-        </p>
       </div>
-
 
       <!-- Shipping Information -->
       <div class="shipping-info">
         <h2 class="section-title">Shipping Information</h2>
 
-        <!-- Shipping Carrier Info -->
         <div class="shipping-row" th:if="${order.shippingCarrier != null}">
-          <span class="shipping-label">Carrier:</span>
+          <span class="shipping-label">Carrier</span>
           <span class="shipping-value" th:text="${order.shippingCarrier}">Flash Express</span>
         </div>
         <div class="shipping-row" th:if="${order.estimatedDelivery != null}">
-          <span class="shipping-label">Estimated Delivery:</span>
+          <span class="shipping-label">Est. Delivery</span>
           <span class="shipping-value" th:text="${#temporals.format(order.estimatedDelivery, 'MMMM dd, yyyy')}">March 5,
             2026</span>
         </div>
 
-        <!-- Shipping Address from OrderResponse.shippingAddress (AddressResponse) -->
         <div class="address-block" th:if="${order.shippingAddress != null}">
-          <p><strong>Shipping Address:</strong></p>
+          <p><strong>Shipping Address</strong></p>
           <p th:text="${order.shippingAddress.firstName + ' ' + order.shippingAddress.lastName}">John Doe</p>
           <p th:text="${order.shippingAddress.addressLine1}">123 Main St</p>
           <p th:if="${order.shippingAddress.addressLine2 != null}" th:text="${order.shippingAddress.addressLine2}">Unit
@@ -569,51 +653,36 @@
             th:text="${order.shippingAddress.city + ', ' + order.shippingAddress.state + ' ' + order.shippingAddress.postalCode}">
             Cebu City, Cebu 6000</p>
           <p th:text="${order.shippingAddress.country}">Philippines</p>
-          <p th:text="'Phone: ' + ${order.shippingAddress.phone}">Phone: +63 912 345 6789</p>
-          <p th:if="${order.shippingAddress.companyName != null}" th:text="${order.shippingAddress.companyName}">Company
-            Name</p>
-        </div>
-
-        <!-- Billing Address if different from shipping -->
-        <div class="address-block"
-          th:if="${order.billingAddress != null and order.billingAddress != order.shippingAddress}"
-          style="margin-top: 15px;">
-          <p><strong>Billing Address:</strong></p>
-          <p th:text="${order.billingAddress.firstName + ' ' + order.billingAddress.lastName}">John Doe</p>
-          <p th:text="${order.billingAddress.addressLine1}">123 Main St</p>
-          <p th:if="${order.billingAddress.addressLine2 != null}" th:text="${order.billingAddress.addressLine2}">Unit 4B
-          </p>
-          <p
-            th:text="${order.billingAddress.city + ', ' + order.billingAddress.state + ' ' + order.billingAddress.postalCode}">
-            Cebu City, Cebu 6000</p>
-          <p th:text="${order.billingAddress.country}">Philippines</p>
-          <p th:text="'Phone: ' + ${order.billingAddress.phone}">Phone: +63 912 345 6789</p>
+          <p th:if="${order.shippingAddress.phone != null}" th:text="'📞 ' + ${order.shippingAddress.phone}">+63 912 345
+            6789</p>
         </div>
       </div>
 
-      <!-- Contact Information -->
+      <!-- Contact / CTA -->
       <div class="contact-info">
         <p>📞 Need help with your order?</p>
         <div class="phone-number">(032) 273 1756</div>
         <p class="contact-note">Our customer service team is ready to assist you</p>
-        <a th:href="@{https://wisecart.ph/orders/{orderNumber}(orderNumber=${order.orderNumber})}" class="btn">View
-          Order Status</a>
+        <a th:href="@{https://wisecart.ph/orders/{id}(id=${order.id})}" class="btn">
+          View Order Status
+        </a>
+      </div>
+
+    </div><!-- /body -->
+
+    <!-- Footer -->
+    <div class="footer">
+      <p>Wisecart — Your Trusted Online Store</p>
+      <p>Questions? Call us at (032) 273 1756</p>
+      <p th:if="${order.userEmail != null}" th:text="'Order placed with: ' + ${order.userEmail}">customer@email.com</p>
+      <p th:if="${order.userEmail == null and order.guestEmail != null}"
+        th:text="'Order placed with: ' + ${order.guestEmail}">guest@email.com</p>
+      <div class="copyright">
+        <p>© 2026 Wisecart. All rights reserved.</p>
+        <p>This is an automated email — please do not reply directly.</p>
       </div>
     </div>
 
-    <!-- Footer - Updated to use userEmail from OrderResponse -->
-    <div class="footer">
-      <p>Wisecart - Your Trusted Online Store</p>
-      <p>Questions about your order? Contact us at (032) 273 1756</p>
-      <p th:if="${order.userEmail != null}" th:text="'Order placed with: ' + ${order.userEmail}">Order placed with:
-        customer@email.com</p>
-      <p th:if="${order.userEmail == null and order.guestEmail != null}"
-        th:text="'Order placed with: ' + ${order.guestEmail}">Order placed with: guest@email.com</p>
-      <div class="copyright">
-        <p>© 2026 Wisecart. All rights reserved.</p>
-        <p>This is an automated email, please do not reply directly.</p>
-      </div>
-    </div>
   </div>
 </body>
 

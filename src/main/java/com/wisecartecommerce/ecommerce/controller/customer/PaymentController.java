@@ -101,16 +101,16 @@ public class PaymentController {
     @Operation(summary = "Initiate Maya checkout (no order created yet)")
     public ResponseEntity<ApiResponse<Map<String, String>>> initiateMayaCheckout(
             @RequestBody MayaInitiateRequest request) {
-        String checkoutUrl = mayaCheckoutService.initiateMayaCheckout(request);
-        return ResponseEntity.ok(ApiResponse.success("Maya checkout initiated",
-                Map.of("checkoutUrl", checkoutUrl)));
+        Map<String, String> result = mayaCheckoutService.initiateMayaCheckout(request);
+        return ResponseEntity.ok(ApiResponse.success("Maya checkout initiated", result));
     }
 
     @GetMapping("/maya/status")
     @Operation(summary = "Poll checkout status after returning from Maya")
     public ResponseEntity<ApiResponse<Map<String, Object>>> getMayaCheckoutStatus(
-            @RequestParam String ref) {
-        Map<String, Object> status = mayaCheckoutService.getCheckoutStatus(ref);
+            @RequestParam String ref,
+            @RequestParam(required = false) String token) {
+        Map<String, Object> status = mayaCheckoutService.getCheckoutStatus(ref, token);
         return ResponseEntity.ok(ApiResponse.success("Checkout status", status));
     }
 
