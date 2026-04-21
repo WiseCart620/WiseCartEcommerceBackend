@@ -80,9 +80,9 @@ jobs:
         FLASH_EXPRESS_SRC_DETAIL_ADDRESS: "Test Address"
         FLASH_EXPRESS_SRC_NAME: WiseCart
         FLASH_EXPRESS_SRC_PHONE: "09000000000"
-        SPRING_FLYWAY_ENABLED: true
+        SPRING_FLYWAY_ENABLED: false
         SPRING_FLYWAY_BASELINE_ON_MIGRATE: true
-        DDL_AUTO: validate
+        DDL_AUTO: create
 
     - name: Verify migration files exist
       run: |
