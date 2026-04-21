@@ -25,8 +25,8 @@ spring:
   mail:
     host: smtp.gmail.com
     port: 587
-    username: ${EMAIL_USERNAME}
-    password: ${EMAIL_PASSWORD}
+    username: ${EMAIL_USERNAME:sales@wisecart.ph}
+    password: ${EMAIL_PASSWORD:pykxswqacfjailtu}
     properties:
       mail:
         smtp:
@@ -44,7 +44,7 @@ app:
     firstName: ${ADMIN_FIRST_NAME:Admin}
     lastName: ${ADMIN_LAST_NAME:User}
   jwt:
-    secret: ${JWT_SECRET}
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
     expiration: 86400000
     refresh-expiration: 604800000
   file:
@@ -59,8 +59,8 @@ server:
 
 flash:
   express:
-    mch-id: ${FLASH_EXPRESS_MCH_ID}
-    secret-key: ${FLASH_EXPRESS_SECRET_KEY}
+    mch-id: ${FLASH_EXPRESS_MCH_ID:BA0097}
+    secret-key: ${FLASH_EXPRESS_SECRET_KEY:cde04a4490b14447f4b2f4966ba5d77a8d3fc7470243511aa00c75a269c55890}
     warehouse-no: ${FLASH_EXPRESS_WAREHOUSE_NO:}
     base-url: ${FLASH_EXPRESS_BASE_URL:https://open-api-tra.flashexpress.ph}
     src-province-name: ${FLASH_EXPRESS_SRC_PROVINCE:Metro Manila}
@@ -71,8 +71,8 @@ flash:
     src-phone: ${FLASH_EXPRESS_SRC_PHONE:09636026511}
 
 maya:
-  public-key: ${MAYA_PUBLIC_KEY}
-  secret-key: ${MAYA_SECRET_KEY}
+  public-key: ${MAYA_PUBLIC_KEY:pk-NCLk7JeDbX1m22ZRMDYO9bEPowNWT5J4aNIKIbcTy2a}
+  secret-key: ${MAYA_SECRET_KEY:sk-8MqXdZYWV9UJB92Mc0i149CtzTWT7BYBQeiarM27iAi}
   base-url: ${MAYA_BASE_URL:https://pg-sandbox.paymaya.com}
   success-url: ${MAYA_SUCCESS_URL:http://localhost:3000/payment/success}
   failure-url: ${MAYA_FAILURE_URL:http://localhost:3000/payment/failed}
