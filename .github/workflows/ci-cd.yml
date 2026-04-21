@@ -319,7 +319,7 @@ jobs:
         key: ${{ secrets.DEPLOY_SSH_KEY }}
         script: |
           sleep 10
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://wisecart.ph/api/products)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/products)
           if [ "$RESPONSE" = "200" ]; then
             echo "✅ External endpoint responding (status: $RESPONSE)"
           else
@@ -363,7 +363,7 @@ jobs:
         echo "🧪 Running smoke tests..."
 
         echo "Testing health endpoint..."
-        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://wisecart.ph/api/products)
+        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/products)
         echo "Health check response: $RESPONSE"
 
         if [ "$RESPONSE" = "200" ]; then
