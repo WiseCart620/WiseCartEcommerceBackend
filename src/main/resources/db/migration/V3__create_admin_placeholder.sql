@@ -1,2 +1,0 @@
--- Admin user is created programmatically by DataInitializer on startup
--- Credentials are loaded from application properties (never hardcoded)

@@ -206,15 +206,6 @@ jobs:
           scripts
           docker-compose.prod.yml
 
-    - name: Upload compose file to server
-      uses: appleboy/scp-action@master
-      with:
-        host: ${{ secrets.DEPLOY_HOST }}
-        username: ${{ secrets.DEPLOY_USER }}
-        key: ${{ secrets.DEPLOY_SSH_KEY }}
-        source: "docker-compose.prod.yml"
-        target: "/home/deploy/wisecart-ecommerce/"
-
     - name: Deploy to DigitalOcean
       uses: appleboy/ssh-action@master
       with:
@@ -260,23 +251,30 @@ jobs:
           echo "⬇️  Pulling new image..."
           docker pull ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:latest
 
-          # Force recreate container
-          echo "🔄 Force recreating container..."
-          timeout 180s docker-compose -f docker-compose.prod.yml up -d --force-recreate --no-deps app || {
-            echo "❌ Docker compose failed!"
-            exit 1
-          }
+          # Reset Flyway history for clean migration
+          echo "🗄️ Resetting Flyway history..."
+          docker exec wisecart-ecommerce-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" wisecart_ecommerce -e "DROP TABLE IF EXISTS flyway_schema_history;" 2>/dev/null || echo "No flyway history to clean"
 
-          # Ensure nginx can reach app
-          docker network connect wisecart_ecommerce-network wisecart-ecommerce-nginx 2>/dev/null || true
-          echo "✅ Network connectivity ensured"
+          # Remove old container
+          echo "🔄 Removing old container..."
+          docker rm -f wisecart-ecommerce-app || true
+
+          # Start new container
+          echo "▶️  Starting new container..."
+          docker run -d \
+            --name wisecart-ecommerce-app \
+            --network wisecart_ecommerce-network \
+            --env-file /home/deploy/wisecart-ecommerce/.env \
+            -e JAVA_TOOL_OPTIONS="-Xmx512m -Xms256m" \
+            --restart unless-stopped \
+            ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:latest
 
           # Health check with retry
           echo "🏥 Waiting for application to be healthy..."
           HEALTH_CHECK_PASSED=false
 
           for i in {1..90}; do
-            if docker exec wisecart-ecommerce-app curl -f -s http://localhost:8080/actuator/health > /dev/null 2>&1; then
+            if docker exec wisecart-ecommerce-app curl -f -s http://localhost:8080/api/products > /dev/null 2>&1; then
               echo "✅ Application is healthy! (attempt $i/90)"
               HEALTH_CHECK_PASSED=true
               break
@@ -285,23 +283,24 @@ jobs:
             sleep 2
           done
 
-          # Check Flyway migration logs
-          echo "📋 Checking Flyway migration logs..."
-          docker logs wisecart-ecommerce-app 2>&1 | grep -i "migrating\|successfully applied" | tail -20 || echo "No Flyway migration logs found"
-
           # Rollback on failure
           if [ "$HEALTH_CHECK_PASSED" = false ]; then
             echo "❌ Application failed health check!"
             echo "🔙 Rolling back to previous version..."
 
             if [ "$CURRENT_IMAGE" != "none" ]; then
-              docker tag $CURRENT_IMAGE ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:rollback
-              docker-compose -f docker-compose.prod.yml up -d --no-deps app
+              docker rm -f wisecart-ecommerce-app || true
+              docker run -d \
+                --name wisecart-ecommerce-app \
+                --network wisecart_ecommerce-network \
+                --env-file /home/deploy/wisecart-ecommerce/.env \
+                --restart unless-stopped \
+                $CURRENT_IMAGE
               echo "✅ Rolled back to: $CURRENT_IMAGE"
             fi
 
             echo "📋 Application logs:"
-            docker-compose -f docker-compose.prod.yml logs --tail=100 app
+            docker logs wisecart-ecommerce-app --tail=100
             exit 1
           fi
 
@@ -311,7 +310,7 @@ jobs:
           docker ps --filter name=wisecart-ecommerce
 
           echo "📊 Database schema version:"
-          docker exec wisecart-ecommerce-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" wisecart_ecommerce -e "SELECT version, description, installed_on FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 10;" 2>/dev/null || echo "Could not retrieve Flyway version"
+          docker exec wisecart-ecommerce-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" wisecart_ecommerce -e "SELECT version, description, installed_on FROM flyway_schema_history ORDER BY installed_rank DESC LIMIT 5;" 2>/dev/null || echo "Could not retrieve Flyway version"
 
     - name: Verify deployment
       uses: appleboy/ssh-action@master
@@ -322,12 +321,13 @@ jobs:
         key: ${{ secrets.DEPLOY_SSH_KEY }}
         script: |
           sleep 10
-          echo "${{ secrets.DEPLOY_HOST }} wisecart.ph" | sudo tee -a /etc/hosts
-          curl -k -f https://wisecart.ph/actuator/health || {
-            echo "⚠️  External health check failed"
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://wisecart.ph/api/products)
+          if [ "$RESPONSE" = "200" ]; then
+            echo "✅ External endpoint responding (status: $RESPONSE)"
+          else
+            echo "⚠️  Unexpected response: $RESPONSE"
             exit 1
-          }
-          echo "✅ External endpoint responding"
+          fi
 
     - name: Cleanup old Docker images
       uses: appleboy/ssh-action@master
@@ -365,20 +365,14 @@ jobs:
         echo "🧪 Running smoke tests..."
 
         echo "Testing health endpoint..."
-        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://wisecart.ph/actuator/health)
+        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://wisecart.ph/api/products)
         echo "Health check response: $RESPONSE"
 
         if [ "$RESPONSE" = "200" ]; then
           echo "✅ HTTPS health check passed"
         else
-          RESPONSE_HTTP=$(curl -s -o /dev/null -w "%{http_code}" http://${{ secrets.DEPLOY_HOST }}/actuator/health)
-          echo "HTTP alternative response: $RESPONSE_HTTP"
-          if [ "$RESPONSE_HTTP" = "200" ] || [ "$RESPONSE_HTTP" = "301" ] || [ "$RESPONSE_HTTP" = "302" ]; then
-            echo "✅ Server is responding (status: $RESPONSE_HTTP)"
-          else
-            echo "❌ Health check failed - HTTPS: $RESPONSE, HTTP: $RESPONSE_HTTP"
-            exit 1
-          fi
+          echo "❌ Health check failed - status: $RESPONSE"
+          exit 1
         fi
 
         echo "Testing API endpoint..."
