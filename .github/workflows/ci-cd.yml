@@ -253,10 +253,6 @@ jobs:
           echo "⬇️  Pulling new image..."
           docker pull ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:latest
 
-          # Reset Flyway history for clean migration
-          echo "🗄️ Resetting Flyway history..."
-          docker exec wisecart-ecommerce-mysql mysql -u root -p"$MYSQL_ROOT_PASSWORD" wisecart_ecommerce -e "DROP TABLE IF EXISTS flyway_schema_history;" 2>/dev/null || echo "No flyway history to clean"
-
           # Remove old container
           echo "🔄 Removing old container..."
           docker rm -f wisecart-ecommerce-app || true
