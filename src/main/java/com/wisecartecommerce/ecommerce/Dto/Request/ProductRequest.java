@@ -59,7 +59,8 @@ public class ProductRequest {
     private boolean featured = false;
 
     private List<ProductVariationRequest> variations;
-
+    
+    private BigDecimal weightKg;
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
