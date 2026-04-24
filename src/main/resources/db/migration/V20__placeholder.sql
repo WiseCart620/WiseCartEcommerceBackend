@@ -1,0 +1,1 @@
+﻿-- Migration V20 - Already applied to database (placeholder)
