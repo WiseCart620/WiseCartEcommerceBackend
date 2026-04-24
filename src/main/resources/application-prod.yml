@@ -18,6 +18,7 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     clean-disabled: true
+    validate-on-migrate: false
 
   mail:
     host: smtp.gmail.com
