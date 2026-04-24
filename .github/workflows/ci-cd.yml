@@ -264,6 +264,8 @@ jobs:
             --network wisecart_ecommerce-network \
             --env-file /home/deploy/wisecart-ecommerce/.env \
             -e JAVA_TOOL_OPTIONS="-Xmx512m -Xms256m" \
+            -v wisecart-ecommerce_uploads:/app/uploads \
+            -v wisecart-ecommerce_app_logs:/app/logs \
             --restart unless-stopped \
             ${{ secrets.DOCKER_USERNAME }}/wisecart-ecommerce:latest
 
@@ -292,6 +294,8 @@ jobs:
                 --name wisecart-ecommerce-app \
                 --network wisecart_ecommerce-network \
                 --env-file /home/deploy/wisecart-ecommerce/.env \
+                -v wisecart-ecommerce_uploads:/app/uploads \
+                -v wisecart-ecommerce_app_logs:/app/logs \
                 --restart unless-stopped \
                 $CURRENT_IMAGE
               echo "✅ Rolled back to: $CURRENT_IMAGE"
@@ -301,6 +305,9 @@ jobs:
             docker logs wisecart-ecommerce-app --tail=100
             exit 1
           fi
+
+          echo "🔄 Restarting nginx..."
+          docker compose -f /home/deploy/wisecart-ecommerce/docker-compose.prod.yml up -d --no-deps nginx
 
           echo "🎉 Deployment successful at $(date)"
 
