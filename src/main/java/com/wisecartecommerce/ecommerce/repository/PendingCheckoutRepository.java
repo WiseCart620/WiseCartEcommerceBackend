@@ -10,4 +10,5 @@ public interface PendingCheckoutRepository extends JpaRepository<PendingCheckout
     Optional<PendingCheckout> findByCheckoutRef(String checkoutRef);
     Optional<PendingCheckout> findByOrderId(Long orderId);
     Optional<PendingCheckout> findByMayaTransactionReference(String mayaTransactionReference);
+    void deleteByUserId(Long userId);
 }

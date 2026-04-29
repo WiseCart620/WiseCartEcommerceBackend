@@ -97,7 +97,6 @@ public class AuthServiceImpl implements AuthService {
             );
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
-
             User user = (User) authentication.getPrincipal();
 
             String accessToken = jwtService.generateToken(user);
@@ -124,17 +123,17 @@ public class AuthServiceImpl implements AuthService {
         String email = request.get("email");
         String name = request.get("name");
         String picture = request.get("picture");
+        String uid = request.get("uid"); // Firebase UID
 
         if (email == null) {
             throw new CustomException("Email not found from social login");
         }
 
-        // Split name
         String[] nameParts = name != null ? name.split(" ", 2) : new String[]{"User", ""};
         String firstName = nameParts[0];
         String lastName = nameParts.length > 1 ? nameParts[1] : "";
 
-        // Find or create user
+        // Find existing user or create new one
         User user = userRepository.findByEmail(email).orElseGet(() -> {
             User newUser = User.builder()
                     .email(email)
@@ -145,9 +144,16 @@ public class AuthServiceImpl implements AuthService {
                     .emailVerified(true)
                     .enabled(true)
                     .avatarUrl(picture)
+                    .firebaseUid(uid) // Save Firebase UID on creation
                     .build();
             return userRepository.save(newUser);
         });
+
+        // Update firebaseUid if existing user doesn't have it yet
+        if (user.getFirebaseUid() == null && uid != null) {
+            user.setFirebaseUid(uid);
+            userRepository.save(user);
+        }
 
         String accessToken = jwtService.generateToken(user);
         String refreshToken = jwtService.generateRefreshToken(user);
@@ -200,25 +206,22 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("User not authenticated");
         }
 
-        // ✅ FIXED: Handle different principal types
         Object principal = authentication.getPrincipal();
         User user;
 
         if (principal instanceof User) {
-            // Principal is already a User object
             user = (User) principal;
         } else if (principal instanceof String) {
-            // Principal is a username/email string
             String email = (String) principal;
             user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new CustomException("User not found: " + email));
         } else if (principal instanceof UserDetails) {
-            // Principal is UserDetails but not our User class
             String email = ((UserDetails) principal).getUsername();
             user = userRepository.findByEmail(email)
                     .orElseThrow(() -> new CustomException("User not found: " + email));
         } else {
-            throw new CustomException("Invalid authentication principal type: " + principal.getClass().getName());
+            throw new CustomException("Invalid authentication principal type: "
+                + principal.getClass().getName());
         }
 
         return mapToUserResponse(user);
@@ -227,21 +230,21 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public void forgotPassword(String email) {
-        if (!rateLimitService.tryConsume(rateLimitService.forgotPasswordBucket(getClientIp(httpRequest)))) {
-            throw new RateLimitException("Too many password reset requests. Please wait before trying again.");
+        if (!rateLimitService.tryConsume(
+                rateLimitService.forgotPasswordBucket(getClientIp(httpRequest)))) {
+            throw new RateLimitException(
+                "Too many password reset requests. Please wait before trying again.");
         }
+
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new CustomException("User not found with email: " + email));
 
         String resetToken = UUID.randomUUID().toString();
         user.setResetToken(resetToken);
         user.setResetTokenExpiry(LocalDateTime.now().plusHours(24));
-
         userRepository.save(user);
 
-        // Send password reset email
         emailService.sendPasswordResetEmail(user, resetToken);
-
         log.info("Password reset token generated for user: {}", email);
     }
 
@@ -258,7 +261,6 @@ public class AuthServiceImpl implements AuthService {
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
-
         userRepository.save(user);
 
         log.info("Password reset for user: {}", user.getEmail());
@@ -272,7 +274,6 @@ public class AuthServiceImpl implements AuthService {
 
         user.setEmailVerified(true);
         user.setVerificationToken(null);
-
         userRepository.save(user);
 
         log.info("Email verified for user: {}", user.getEmail());

@@ -26,8 +26,10 @@ import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
+import com.wisecartecommerce.ecommerce.repository.PendingCheckoutRepository;
 import com.wisecartecommerce.ecommerce.repository.UserRepository;
 import com.wisecartecommerce.ecommerce.service.FileStorageService;
+import com.wisecartecommerce.ecommerce.service.FirebaseAdminService;
 import com.wisecartecommerce.ecommerce.service.UserService;
 import com.wisecartecommerce.ecommerce.util.Role;
 
@@ -44,6 +46,8 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder passwordEncoder;
     private final FileStorageService fileStorageService;
     private final JwtService jwtService;
+    private final PendingCheckoutRepository pendingCheckoutRepository;
+    private final FirebaseAdminService firebaseAdminService;
 
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -79,14 +83,12 @@ public class UserServiceImpl implements UserService {
         if (request.getFirstName() != null) {
             user.setFirstName(request.getFirstName());
         }
-
         if (request.getLastName() != null) {
             user.setLastName(request.getLastName());
         }
 
         User updatedUser = userRepository.save(user);
         log.info("Profile updated for user: {}", user.getEmail());
-
         return mapToUserResponse(updatedUser);
     }
 
@@ -98,14 +100,12 @@ public class UserServiceImpl implements UserService {
         if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new CustomException("Current password is incorrect");
         }
-
         if (request.getNewPassword().equals(request.getCurrentPassword())) {
             throw new CustomException("New password must be different from current password");
         }
 
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
-
         log.info("Password changed for user: {}", user.getEmail());
     }
 
@@ -113,21 +113,15 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse uploadAvatar(MultipartFile file) {
         User user = getCurrentUser();
-
         try {
-            // Delete old avatar if exists
             if (user.getAvatarUrl() != null) {
                 fileStorageService.deleteFile(user.getAvatarUrl());
             }
-
             String avatarUrl = fileStorageService.uploadUserImage(file, user.getId());
             user.setAvatarUrl(avatarUrl);
-
             User updatedUser = userRepository.save(user);
             log.info("Avatar uploaded for user: {}", user.getEmail());
-
             return mapToUserResponse(updatedUser);
-
         } catch (Exception e) {
             log.error("Failed to upload avatar", e);
             throw new CustomException("Failed to upload avatar: " + e.getMessage());
@@ -138,21 +132,17 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public UserResponse removeAvatar() {
         User user = getCurrentUser();
-
         if (user.getAvatarUrl() != null) {
             try {
                 fileStorageService.deleteFile(user.getAvatarUrl());
             } catch (Exception e) {
                 log.error("Failed to delete avatar file", e);
             }
-
             user.setAvatarUrl(null);
             User updatedUser = userRepository.save(user);
             log.info("Avatar removed for user: {}", user.getEmail());
-
             return mapToUserResponse(updatedUser);
         }
-
         return mapToUserResponse(user);
     }
 
@@ -170,7 +160,6 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public Object addAddress(Object addressRequest) {
         User user = getCurrentUser();
-
         AddressRequest request = (AddressRequest) addressRequest;
 
         Address address = Address.builder()
@@ -199,7 +188,6 @@ public class UserServiceImpl implements UserService {
 
         Address savedAddress = addressRepository.save(address);
         log.info("Address added for user: {}", user.getEmail());
-
         return mapAddressToResponse(savedAddress);
     }
 
@@ -207,7 +195,6 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public Object updateAddress(Long addressId, Object addressRequest) {
         User user = getCurrentUser();
-
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
 
@@ -216,7 +203,6 @@ public class UserServiceImpl implements UserService {
         }
 
         AddressRequest request = (AddressRequest) addressRequest;
-
         if (request.getFirstName() != null) {
             address.setFirstName(request.getFirstName());
         }
@@ -264,7 +250,6 @@ public class UserServiceImpl implements UserService {
 
         Address updatedAddress = addressRepository.save(address);
         log.info("Address updated for user: {}", user.getEmail());
-
         return mapAddressToResponse(updatedAddress);
     }
 
@@ -272,7 +257,6 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void deleteAddress(Long addressId) {
         User user = getCurrentUser();
-
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
 
@@ -282,11 +266,10 @@ public class UserServiceImpl implements UserService {
 
         if (address.isDefault()) {
             long activeCount = addressRepository.findByUserId(user.getId())
-                    .stream()
-                    .filter(a -> !a.isDeleted())
-                    .count();
+                    .stream().filter(a -> !a.isDeleted()).count();
             if (activeCount > 1) {
-                throw new CustomException("Cannot delete default address. Set another address as default first.");
+                throw new CustomException(
+                        "Cannot delete default address. Set another address as default first.");
             }
         }
 
@@ -297,10 +280,8 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public Object setDefaultAddress(Long addressId
-    ) {
+    public Object setDefaultAddress(Long addressId) {
         User user = getCurrentUser();
-
         Address address = addressRepository.findById(addressId)
                 .orElseThrow(() -> new ResourceNotFoundException("Address not found"));
 
@@ -308,7 +289,6 @@ public class UserServiceImpl implements UserService {
             throw new CustomException("You can only set your own addresses as default");
         }
 
-        // Unset previous default
         addressRepository.findByUserIdAndIsDefaultTrue(user.getId())
                 .ifPresent(addr -> {
                     addr.setDefault(false);
@@ -317,9 +297,7 @@ public class UserServiceImpl implements UserService {
 
         address.setDefault(true);
         Address updatedAddress = addressRepository.save(address);
-
         log.info("Default address set for user: {}", user.getEmail());
-
         return mapAddressToResponse(updatedAddress);
     }
 
@@ -327,16 +305,13 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public Object getOrdersSummary() {
         User user = getCurrentUser();
-
         Map<String, Object> summary = new HashMap<>();
         summary.put("totalOrders", user.getOrders().size());
         summary.put("totalSpent", user.getOrders().stream()
                 .map(order -> order.getFinalAmount())
                 .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add));
         summary.put("pendingOrders", user.getOrders().stream()
-                .filter(order -> order.getStatus().name().equals("PENDING"))
-                .count());
-
+                .filter(order -> order.getStatus().name().equals("PENDING")).count());
         return summary;
     }
 
@@ -344,7 +319,6 @@ public class UserServiceImpl implements UserService {
     @Transactional(readOnly = true)
     public Object getWishlist() {
         User user = getCurrentUser();
-
         return user.getWishlist().stream()
                 .map(product -> {
                     Map<String, Object> productMap = new HashMap<>();
@@ -360,34 +334,28 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void addToWishlist(Long productId
-    ) {
-        // Implementation depends on Product entity
+    public void addToWishlist(Long productId) {
         log.info("Adding product {} to wishlist", productId);
     }
 
     @Override
     @Transactional
-    public void removeFromWishlist(Long productId
-    ) {
-        // Implementation depends on Product entity
+    public void removeFromWishlist(Long productId) {
         log.info("Removing product {} from wishlist", productId);
     }
 
-    // Admin methods
+    // ─── Admin Methods ───────────────────────────────────────────────────────
     @Override
     @Transactional(readOnly = true)
     public Page<UserResponse> getAllUsers(Pageable pageable, String role,
-            Boolean enabled, String search
-    ) {
+            Boolean enabled, String search) {
         Page<User> users = userRepository.findUsersWithFilters(role, enabled, search, pageable);
         return users.map(this::mapToUserResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public UserResponse getUserById(Long id
-    ) {
+    public UserResponse getUserById(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
         return mapToUserResponse(user);
@@ -395,8 +363,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateUser(Long id, UpdateUserRequest request
-    ) {
+    public UserResponse updateUser(Long id, UpdateUserRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
@@ -406,44 +373,35 @@ public class UserServiceImpl implements UserService {
             }
             user.setEmail(request.getEmail());
         }
-
         if (request.getPhone() != null && !request.getPhone().equals(user.getPhone())) {
             if (userRepository.existsByPhone(request.getPhone())) {
                 throw new CustomException("Phone number already registered");
             }
             user.setPhone(request.getPhone());
         }
-
         if (request.getFirstName() != null) {
             user.setFirstName(request.getFirstName());
         }
-
         if (request.getLastName() != null) {
             user.setLastName(request.getLastName());
         }
 
         User updatedUser = userRepository.save(user);
         log.info("User updated by admin: {}", user.getEmail());
-
         return mapToUserResponse(updatedUser);
     }
 
     @Override
     @Transactional
-    public UserResponse updateUserRole(Long id, String role
-    ) {
+    public UserResponse updateUserRole(Long id, String role) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
         try {
             Role newRole = Role.valueOf(role.toUpperCase());
             user.setRole(newRole);
-
             User updatedUser = userRepository.save(user);
             log.info("User role updated: {} to {}", user.getEmail(), newRole);
-
             return mapToUserResponse(updatedUser);
-
         } catch (IllegalArgumentException e) {
             throw new CustomException("Invalid role: " + role);
         }
@@ -451,41 +409,53 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserResponse updateUserStatus(Long id, boolean enabled
-    ) {
+    public UserResponse updateUserStatus(Long id, boolean enabled) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         user.setEnabled(enabled);
-
         User updatedUser = userRepository.save(user);
-        log.info("User status updated: {} to {}", user.getEmail(), enabled ? "enabled" : "disabled");
 
+        // Sync disable/enable with Firebase
+        if (enabled) {
+            firebaseAdminService.enableUser(user.getFirebaseUid());
+        } else {
+            firebaseAdminService.disableUser(user.getFirebaseUid());
+        }
+
+        log.info("User status updated: {} to {}", user.getEmail(), enabled ? "enabled" : "disabled");
         return mapToUserResponse(updatedUser);
     }
 
     @Override
     @Transactional
-    public void deleteUser(Long id
-    ) {
+    public void deleteUser(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        // Check if user is trying to delete themselves
         User currentUser = getCurrentUser();
         if (currentUser.getId().equals(id)) {
             throw new CustomException("You cannot delete your own account");
         }
 
-        // Delete user avatar if exists
         if (user.getAvatarUrl() != null) {
             try {
-                fileStorageService.deleteFile(user.getAvatarUrl());
+                if (!user.getAvatarUrl().startsWith("http://")
+                        && !user.getAvatarUrl().startsWith("https://")) {
+                    fileStorageService.deleteFile(user.getAvatarUrl());
+                } else {
+                    log.debug("Skipping avatar delete — external URL: {}", user.getAvatarUrl());
+                }
             } catch (Exception e) {
-                log.error("Failed to delete avatar file", e);
+                log.error("Failed to delete avatar file for user {}", id, e);
             }
         }
 
+        // Sync deletion with Firebase (silent fail if no firebaseUid)
+        firebaseAdminService.deleteUser(user.getFirebaseUid());
+
+        // Delete FK-constrained child records, then the user
+        pendingCheckoutRepository.deleteByUserId(id);
         userRepository.delete(user);
         log.info("User deleted by admin: {}", user.getEmail());
     }
@@ -498,52 +468,41 @@ public class UserServiceImpl implements UserService {
         stats.put("totalCustomers", userRepository.countCustomers());
         stats.put("totalAdmins", userRepository.countAdmins());
         stats.put("todayRegistrations", userRepository.countTodayRegistrations());
-
         return stats;
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserResponse> getRecentUsers(int limit
-    ) {
+    public List<UserResponse> getRecentUsers(int limit) {
         Pageable pageable = org.springframework.data.domain.PageRequest.of(0, limit,
                 org.springframework.data.domain.Sort.by("createdAt").descending());
-
         Page<User> users = userRepository.findAll(pageable);
-        return users.stream()
-                .map(this::mapToUserResponse)
-                .collect(Collectors.toList());
+        return users.stream().map(this::mapToUserResponse).collect(Collectors.toList());
     }
 
     @Override
     @Transactional
-    public String generateImpersonationToken(Long id
-    ) {
+    public String generateImpersonationToken(Long id) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
         User currentUser = getCurrentUser();
-
-        // Log impersonation
         log.info("Admin {} impersonating user {}", currentUser.getEmail(), user.getEmail());
-
         return jwtService.generateToken(user);
     }
 
+    @Override
     public void resetUserPassword(Long id, String newPassword) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
         String passwordToSet = (newPassword != null && !newPassword.isBlank())
                 ? newPassword
                 : UUID.randomUUID().toString().substring(0, 8);
-
         user.setPassword(passwordEncoder.encode(passwordToSet));
         userRepository.save(user);
-
         log.info("Password reset for user: {}", user.getEmail());
     }
 
+    // ─── Mappers ─────────────────────────────────────────────────────────────
     private UserResponse mapToUserResponse(User user) {
         return UserResponse.builder()
                 .id(user.getId())

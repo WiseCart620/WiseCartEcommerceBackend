@@ -85,3 +85,8 @@ logging:
   level:
     root: INFO
     com.wisecartecommerce: DEBUG
+
+
+firebase:
+  api-key: AIzaSyBpZg_me0mqOQLHFNKMiYBT0_JaEdMBIK8
+  project-id: social-login-ad4ab

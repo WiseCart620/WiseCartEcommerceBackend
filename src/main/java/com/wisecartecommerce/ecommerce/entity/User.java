@@ -15,8 +15,8 @@ import java.util.*;
 
 @Entity
 @Table(name = "users", uniqueConstraints = {
-        @UniqueConstraint(columnNames = "email"),
-        @UniqueConstraint(columnNames = "phone")
+    @UniqueConstraint(columnNames = "email"),
+    @UniqueConstraint(columnNames = "phone")
 })
 @Data
 @NoArgsConstructor
@@ -52,6 +52,9 @@ public class User implements UserDetails {
 
     @Column(name = "avatar_url")
     private String avatarUrl;
+
+    @Column(name = "firebase_uid", unique = true)
+    private String firebaseUid;
 
     @Column(nullable = false)
     @Builder.Default
