@@ -1,5 +1,7 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.util.Map;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.LoginRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.RegisterRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.UserResponse;
@@ -15,4 +17,5 @@ public interface AuthService {
     void resetPassword(String token, String newPassword);
     void verifyEmail(String token);
     boolean validateToken(String token);
+    AuthenticationResponse socialLogin(Map<String, String> request);
 }

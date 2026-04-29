@@ -1,6 +1,9 @@
 package com.wisecartecommerce.ecommerce.controller.auth;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.Map;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -47,6 +50,21 @@ public class AuthController {
             @Valid @RequestBody RefreshTokenRequest request) {
         AuthenticationResponse response = authService.refreshToken(request.getRefreshToken());
         return ResponseEntity.ok(ApiResponse.success("Token refreshed", response));
+    }
+
+    @PostMapping("/social-login")
+    public ResponseEntity<ApiResponse<AuthenticationResponse>> socialLogin(
+            @RequestBody Map<String, String> request) {
+
+        if (request.get("email") == null) {
+            return ResponseEntity.badRequest()
+                    .body(ApiResponse.error("Email is required"));
+        }
+
+        AuthenticationResponse response = authService.socialLogin(request);
+        return ResponseEntity.ok(
+                ApiResponse.success("Social login successful", response)
+        );
     }
 
     @PostMapping("/logout")

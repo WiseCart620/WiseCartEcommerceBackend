@@ -1,6 +1,7 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.security.authentication.AuthenticationManager;
@@ -115,6 +116,51 @@ public class AuthServiceImpl implements AuthService {
         } catch (Exception e) {
             throw new CustomException("Invalid email or password");
         }
+    }
+
+    @Override
+    @Transactional
+    public AuthenticationResponse socialLogin(Map<String, String> request) {
+        String email = request.get("email");
+        String name = request.get("name");
+        String picture = request.get("picture");
+
+        if (email == null) {
+            throw new CustomException("Email not found from social login");
+        }
+
+        // Split name
+        String[] nameParts = name != null ? name.split(" ", 2) : new String[]{"User", ""};
+        String firstName = nameParts[0];
+        String lastName = nameParts.length > 1 ? nameParts[1] : "";
+
+        // Find or create user
+        User user = userRepository.findByEmail(email).orElseGet(() -> {
+            User newUser = User.builder()
+                    .email(email)
+                    .firstName(firstName)
+                    .lastName(lastName)
+                    .password(passwordEncoder.encode(UUID.randomUUID().toString()))
+                    .role(Role.CUSTOMER)
+                    .emailVerified(true)
+                    .enabled(true)
+                    .avatarUrl(picture)
+                    .build();
+            return userRepository.save(newUser);
+        });
+
+        String accessToken = jwtService.generateToken(user);
+        String refreshToken = jwtService.generateRefreshToken(user);
+
+        log.info("Social login successful for: {}", email);
+
+        return AuthenticationResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .tokenType("Bearer")
+                .expiresIn(jwtService.getExpirationTime())
+                .user(mapToUserResponse(user))
+                .build();
     }
 
     @Override

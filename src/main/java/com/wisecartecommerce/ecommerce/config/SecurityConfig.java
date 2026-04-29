@@ -41,7 +41,8 @@ public class SecurityConfig {
                         "/auth/refresh", "/api/auth/refresh",
                         "/auth/forgot-password", "/api/auth/forgot-password",
                         "/auth/reset-password", "/api/auth/reset-password",
-                        "/auth/verify-email", "/api/auth/verify-email")
+                        "/auth/verify-email", "/api/auth/verify-email",
+        "/auth/social-login", "/api/auth/social-login")
                 .permitAll()
                 // Category public endpoints
                 .requestMatchers(
@@ -99,7 +100,8 @@ public class SecurityConfig {
                         "/files/upload/**", "/api/files/upload/**",
                         "/files/delete", "/api/files/delete")
                 .authenticated()
-                .anyRequest().authenticated())
+                .anyRequest().authenticated()
+        )
                 .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
@@ -118,7 +120,7 @@ public class SecurityConfig {
                 "https://wisecart.ph",
                 "https://www.wisecart.ph"
         ));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT","DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(Arrays.asList("Content-Disposition"));
         configuration.setAllowCredentials(true);
