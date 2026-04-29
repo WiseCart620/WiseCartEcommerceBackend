@@ -9,10 +9,15 @@ import java.util.List;
 
 @Repository
 public interface CouponUsageRepository extends JpaRepository<CouponUsage, Long> {
-    
+
     Integer countByUserIdAndCouponId(Long userId, Long couponId);
-    
+
     List<CouponUsage> findByUserId(Long userId);
-    
+
     List<CouponUsage> findByCouponId(Long couponId);
+
+    void deleteByOrderIdIn(List<Long> orderIds);
+
+    void deleteByUserId(Long userId);
+
 }

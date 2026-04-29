@@ -32,6 +32,7 @@ import com.wisecartecommerce.ecommerce.service.FileStorageService;
 import com.wisecartecommerce.ecommerce.service.FirebaseAdminService;
 import com.wisecartecommerce.ecommerce.service.UserService;
 import com.wisecartecommerce.ecommerce.util.Role;
+import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,7 @@ public class UserServiceImpl implements UserService {
     private final JwtService jwtService;
     private final PendingCheckoutRepository pendingCheckoutRepository;
     private final FirebaseAdminService firebaseAdminService;
+    private final CouponUsageRepository couponUsageRepository;
 
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -454,9 +456,17 @@ public class UserServiceImpl implements UserService {
         // Sync deletion with Firebase (silent fail if no firebaseUid)
         firebaseAdminService.deleteUser(user.getFirebaseUid());
 
-        // Delete FK-constrained child records, then the user
+        List<Long> orderIds = user.getOrders().stream()
+                .map(order -> order.getId())
+                .collect(Collectors.toList());
+        if (!orderIds.isEmpty()) {
+            couponUsageRepository.deleteByOrderIdIn(orderIds);
+        }
+        couponUsageRepository.deleteByUserId(id);
+
         pendingCheckoutRepository.deleteByUserId(id);
         userRepository.delete(user);
+
         log.info("User deleted by admin: {}", user.getEmail());
     }
 
