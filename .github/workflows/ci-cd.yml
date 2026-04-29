@@ -264,6 +264,8 @@ jobs:
             --network wisecart_ecommerce-network \
             --env-file /home/deploy/wisecart-ecommerce/.env \
             -e JAVA_TOOL_OPTIONS="-Xmx512m -Xms256m" \
+            -e FIREBASE_API_KEY="${{ secrets.FIREBASE_API_KEY }}" \
+            -e FIREBASE_PROJECT_ID="${{ secrets.FIREBASE_PROJECT_ID }}" \
             -v wisecart-ecommerce_uploads:/app/uploads \
             -v wisecart-ecommerce_app_logs:/app/logs \
             --restart unless-stopped \
