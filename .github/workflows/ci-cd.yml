@@ -276,7 +276,7 @@ jobs:
           HEALTH_CHECK_PASSED=false
 
           for i in {1..90}; do
-            if docker exec wisecart-ecommerce-app curl -f -s http://localhost:8080/api/products > /dev/null 2>&1; then
+            if docker exec wisecart-ecommerce-app curl -f -s http://localhost:8080/api/public/categories > /dev/null 2>&1; then
               echo "✅ Application is healthy! (attempt $i/90)"
               HEALTH_CHECK_PASSED=true
               break
@@ -328,7 +328,7 @@ jobs:
         key: ${{ secrets.DEPLOY_SSH_KEY }}
         script: |
           sleep 10
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/products)
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/public/categories)
           if [ "$RESPONSE" = "200" ]; then
             echo "✅ External endpoint responding (status: $RESPONSE)"
           else
@@ -372,7 +372,7 @@ jobs:
         echo "🧪 Running smoke tests..."
 
         echo "Testing health endpoint..."
-        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/products)
+        RESPONSE=$(curl -k -L -s -o /dev/null -w "%{http_code}" https://api.wisecart.ph/api/public/categories)
         echo "Health check response: $RESPONSE"
 
         if [ "$RESPONSE" = "200" ]; then
