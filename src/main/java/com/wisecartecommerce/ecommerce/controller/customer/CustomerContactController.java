@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.ContactReplyRequest;
+import com.wisecartecommerce.ecommerce.Dto.Request.ContactRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ContactMessageResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.ContactReplyResponse;
@@ -67,6 +68,15 @@ public class CustomerContactController {
             @AuthenticationPrincipal User user) {
         return ResponseEntity.ok(
                 ApiResponse.success("Thread retrieved", contactService.getMyMessageThread(id, user.getId()))
+        );
+    }
+
+    @PostMapping
+    public ResponseEntity<ApiResponse<ContactMessageResponse>> submitContact(
+            @Valid @RequestBody ContactRequest request,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(
+                ApiResponse.success("Message sent", contactService.submitMessage(request, user.getId()))
         );
     }
 
