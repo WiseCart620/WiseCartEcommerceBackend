@@ -181,7 +181,7 @@ public class ContactService {
 
     private ContactMessageResponse toResponse(ContactMessage m, boolean includeReplies) {
         long unread = (m.getUserId() != null)
-                ? replyRepository.countUnreadBySenderType(m.getId(), SenderType.CUSTOMER)
+                ? replyRepository.countUnreadBySenderType(m.getId(), SenderType.ADMIN)
                 : 0;
 
         return ContactMessageResponse.builder()
