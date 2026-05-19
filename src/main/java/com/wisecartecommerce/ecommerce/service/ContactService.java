@@ -57,7 +57,11 @@ public class ContactService {
                 .build();
 
         ContactMessage saved = messageRepository.save(toSave);
-        emailService.sendContactEmail(request);
+        try {
+            emailService.sendContactEmail(request);
+        } catch (Exception e) {
+            log.warn("Failed to send contact email for message #{}: {}", saved.getId(), e.getMessage());
+        }
 
         log.info("Contact message #{} submitted by {} (userId={})", saved.getId(), request.getEmail(), userId);
         return toResponse(saved, false);
