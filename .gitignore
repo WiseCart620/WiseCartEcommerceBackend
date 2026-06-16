@@ -64,9 +64,26 @@ Thumbs.db
 
 # Application specific
 uploads/
+uploads-dev/    # Added this
 backups/
 temp/
 *.tmp
+
+# Images - NEVER commit these
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+*.bmp
+*.svg
+*.ico
+*.tiff
+*.tif
+*.raw
+*.psd
+*.ai
+*.eps
 
 # SSL Certificates
 certbot/
