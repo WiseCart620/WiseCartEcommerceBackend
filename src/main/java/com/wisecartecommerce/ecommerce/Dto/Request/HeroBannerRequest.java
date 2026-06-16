@@ -1,9 +1,19 @@
 package com.wisecartecommerce.ecommerce.Dto.Request;
 
-import jakarta.validation.constraints.*;
-import lombok.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Data @Builder @NoArgsConstructor @AllArgsConstructor
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class HeroBannerRequest {
 
     @NotBlank(message = "Title is required")
@@ -25,7 +35,10 @@ public class HeroBannerRequest {
     @Pattern(regexp = "light|dark", message = "textColor must be 'light' or 'dark'")
     private String textColor;
 
-    @Min(0) @Max(100)
+    private String mobileImageUrl;
+
+    @Min(0)
+    @Max(100)
     private Integer overlayOpacity;
 
     private Integer displayOrder;

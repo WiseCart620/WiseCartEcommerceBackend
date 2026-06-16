@@ -26,14 +26,6 @@ public class AdminHeroBannerController {
         return ResponseEntity.ok(ApiResponse.success("Banners retrieved", bannerService.getAllBanners()));
     }
 
-    @PostMapping(consumes = "multipart/form-data")
-    public ResponseEntity<ApiResponse<HeroBannerResponse>> create(
-            @RequestPart("banner") String bannerJson,
-            @RequestPart(value = "image", required = false) MultipartFile image) throws Exception {
-        HeroBannerRequest req = objectMapper.readValue(bannerJson, HeroBannerRequest.class);
-        return ResponseEntity.ok(ApiResponse.success("Banner created", bannerService.create(req, image)));
-    }
-
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<HeroBannerResponse>> update(
             @PathVariable Long id, @RequestBody HeroBannerRequest req) {
@@ -44,6 +36,22 @@ public class AdminHeroBannerController {
     public ResponseEntity<ApiResponse<HeroBannerResponse>> uploadImage(
             @PathVariable Long id, @RequestParam("file") MultipartFile file) {
         return ResponseEntity.ok(ApiResponse.success("Image uploaded", bannerService.uploadImage(id, file)));
+    }
+
+    @PostMapping(consumes = "multipart/form-data")
+    public ResponseEntity<ApiResponse<HeroBannerResponse>> create(
+            @RequestPart("banner") String bannerJson,
+            @RequestPart(value = "image", required = false) MultipartFile image,
+            @RequestPart(value = "mobileImage", required = false) MultipartFile mobileImage) throws Exception {
+        HeroBannerRequest req = objectMapper.readValue(bannerJson, HeroBannerRequest.class);
+        return ResponseEntity.ok(ApiResponse.success("Banner created", bannerService.create(req, image, mobileImage)));
+    }
+
+    @PostMapping("/{id}/mobile-image")
+    public ResponseEntity<ApiResponse<HeroBannerResponse>> uploadMobileImage(
+            @PathVariable Long id, @RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(ApiResponse.success("Mobile image uploaded",
+                bannerService.uploadMobileImage(id, file)));
     }
 
     @PatchMapping("/{id}/status")

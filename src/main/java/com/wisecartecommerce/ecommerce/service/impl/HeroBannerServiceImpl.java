@@ -1,20 +1,25 @@
 package com.wisecartecommerce.ecommerce.service.impl;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.HeroBannerRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.HeroBannerResponse;
 import com.wisecartecommerce.ecommerce.entity.HeroBanner;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.HeroBannerRepository;
 import com.wisecartecommerce.ecommerce.service.FileStorageService;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
-import java.util.List;
-import java.util.stream.Collectors;
 
-@Service @RequiredArgsConstructor @Slf4j
+@Service
+@RequiredArgsConstructor
+@Slf4j
 public class HeroBannerServiceImpl {
 
     private final HeroBannerRepository bannerRepository;
@@ -33,7 +38,7 @@ public class HeroBannerServiceImpl {
     }
 
     @Transactional
-    public HeroBannerResponse create(HeroBannerRequest req, MultipartFile image) {
+    public HeroBannerResponse create(HeroBannerRequest req, MultipartFile image, MultipartFile mobileImage) {
         HeroBanner banner = HeroBanner.builder()
                 .title(req.getTitle())
                 .badge(req.getBadge())
@@ -44,6 +49,7 @@ public class HeroBannerServiceImpl {
                 .overlayOpacity(req.getOverlayOpacity() != null ? req.getOverlayOpacity() : 40)
                 .displayOrder(req.getDisplayOrder() != null ? req.getDisplayOrder() : 0)
                 .active(req.isActive())
+                .mobileImageUrl(req.getMobileImageUrl()) // Add this line
                 .build();
 
         HeroBanner saved = bannerRepository.save(banner);
@@ -57,6 +63,17 @@ public class HeroBannerServiceImpl {
                 log.error("Failed to upload banner image", e);
             }
         }
+
+        if (mobileImage != null && !mobileImage.isEmpty()) {
+            try {
+                String url = fileStorageService.uploadProductImage(mobileImage, saved.getId());
+                saved.setMobileImageUrl(url);
+                saved = bannerRepository.save(saved);
+            } catch (Exception e) {
+                log.error("Failed to upload mobile banner image", e);
+            }
+        }
+
         return toResponse(saved);
     }
 
@@ -67,12 +84,46 @@ public class HeroBannerServiceImpl {
         banner.setTitle(req.getTitle());
         banner.setBadge(req.getBadge());
         banner.setSubtitle(req.getSubtitle());
-        if (req.getButtonText() != null) banner.setButtonText(req.getButtonText());
-        if (req.getButtonLink() != null) banner.setButtonLink(req.getButtonLink());
-        if (req.getTextColor() != null) banner.setTextColor(req.getTextColor());
-        if (req.getOverlayOpacity() != null) banner.setOverlayOpacity(req.getOverlayOpacity());
-        if (req.getDisplayOrder() != null) banner.setDisplayOrder(req.getDisplayOrder());
+        if (req.getButtonText() != null) {
+            banner.setButtonText(req.getButtonText());
+        }
+        if (req.getButtonLink() != null) {
+            banner.setButtonLink(req.getButtonLink());
+        }
+        if (req.getTextColor() != null) {
+            banner.setTextColor(req.getTextColor());
+        }
+        if (req.getOverlayOpacity() != null) {
+            banner.setOverlayOpacity(req.getOverlayOpacity());
+        }
+        if (req.getDisplayOrder() != null) {
+            banner.setDisplayOrder(req.getDisplayOrder());
+        }
         banner.setActive(req.isActive());
+        if (req.getMobileImageUrl() != null) {
+            banner.setMobileImageUrl(req.getMobileImageUrl()); // Add this line
+
+        }
+        return toResponse(bannerRepository.save(banner));
+    }
+
+    @Transactional
+    public HeroBannerResponse uploadMobileImage(Long id, MultipartFile file) {
+        HeroBanner banner = bannerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Banner not found: " + id));
+        try {
+            if (banner.getMobileImageUrl() != null) {
+                try {
+                    fileStorageService.deleteFile(banner.getMobileImageUrl());
+                } catch (Exception ignored) {
+                }
+            }
+            String url = fileStorageService.uploadProductImage(file, id);
+            banner.setMobileImageUrl(url);
+        } catch (Exception e) {
+            log.error("Mobile banner image upload failed", e);
+            throw new RuntimeException("Image upload failed: " + e.getMessage());
+        }
         return toResponse(bannerRepository.save(banner));
     }
 
@@ -81,7 +132,12 @@ public class HeroBannerServiceImpl {
         HeroBanner banner = bannerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Banner not found: " + id));
         try {
-            if (banner.getImageUrl() != null) fileStorageService.deleteFile(banner.getImageUrl());
+            if (banner.getImageUrl() != null) {
+                try {
+                    fileStorageService.deleteFile(banner.getImageUrl());
+                } catch (Exception ignored) {
+                }
+            }
             String url = fileStorageService.uploadProductImage(file, id);
             banner.setImageUrl(url);
         } catch (Exception e) {
@@ -96,7 +152,10 @@ public class HeroBannerServiceImpl {
         HeroBanner banner = bannerRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Banner not found: " + id));
         if (banner.getImageUrl() != null) {
-            try { fileStorageService.deleteFile(banner.getImageUrl()); } catch (Exception ignored) {}
+            try {
+                fileStorageService.deleteFile(banner.getImageUrl());
+            } catch (Exception ignored) {
+            }
         }
         bannerRepository.delete(banner);
     }
@@ -114,6 +173,7 @@ public class HeroBannerServiceImpl {
                 .id(b.getId()).title(b.getTitle()).badge(b.getBadge())
                 .subtitle(b.getSubtitle()).buttonText(b.getButtonText())
                 .buttonLink(b.getButtonLink()).imageUrl(b.getImageUrl())
+                .mobileImageUrl(b.getMobileImageUrl()) // Add this line
                 .textColor(b.getTextColor()).overlayOpacity(b.getOverlayOpacity())
                 .displayOrder(b.getDisplayOrder()).active(b.isActive())
                 .createdAt(b.getCreatedAt()).updatedAt(b.getUpdatedAt())

@@ -1,15 +1,29 @@
 package com.wisecartecommerce.ecommerce.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
+import java.time.LocalDateTime;
+
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "hero_banners")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class HeroBanner {
 
     @Id
@@ -36,12 +50,16 @@ public class HeroBanner {
     @Column(name = "image_url")
     private String imageUrl;
 
-    /** light or dark — controls text color on top of the image */
+    /**
+     * light or dark — controls text color on top of the image
+     */
     @Column(name = "text_color", length = 10)
     @Builder.Default
     private String textColor = "light";
 
-    /** 0–100 — overlay darkness percentage */
+    /**
+     * 0–100 — overlay darkness percentage
+     */
     @Column(name = "overlay_opacity")
     @Builder.Default
     private Integer overlayOpacity = 40;
@@ -61,4 +79,7 @@ public class HeroBanner {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    @Column(name = "mobile_image_url")
+    private String mobileImageUrl;
 }
