@@ -1,6 +1,3 @@
--- V68__add_jnt_shipping_rates.sql
--- Manually-configured J&T Express shipping rate table
--- (no J&T API access available, so rates are entered and maintained by admins)
 
 CREATE TABLE jnt_shipping_rates (
     id                            BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -27,10 +24,8 @@ CREATE TABLE jnt_shipping_rates (
     updated_at                    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
--- Speeds up the route lookup used by JntShippingRateRepository.findMatchingRates / findAllForRoute
 CREATE INDEX idx_jnt_rates_route
     ON jnt_shipping_rates (origin_province, origin_city, destination_province, destination_city);
 
--- Speeds up admin table search by destination
 CREATE INDEX idx_jnt_rates_destination
     ON jnt_shipping_rates (destination_province, destination_city);
