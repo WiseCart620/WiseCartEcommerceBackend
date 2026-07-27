@@ -87,6 +87,17 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success("Order status updated", response));
     }
 
+    @PatchMapping("/{id}/jnt-tracking")
+    @Operation(summary = "Update J&T Express tracking (manual, admin-controlled)")
+    public ResponseEntity<ApiResponse<OrderResponse>> updateJntTracking(
+            @PathVariable Long id,
+            @RequestParam(required = false) String trackingNumber,
+            @RequestParam com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status status) {
+
+        OrderResponse response = orderService.updateJntTracking(id, trackingNumber, status);
+        return ResponseEntity.ok(ApiResponse.success("J&T tracking updated", response));
+    }
+
     @DeleteMapping("/{id}")
     @Operation(summary = "Cancel order")
     public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(@PathVariable Long id) {

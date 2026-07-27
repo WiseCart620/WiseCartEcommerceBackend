@@ -14,6 +14,7 @@ public class JntEstimateResponse {
     private String originCity;
     private String destinationProvince;
     private String destinationCity;
+    private String destinationBarangay;
     private String serviceType;
     private String bagSize;
     private BigDecimal weightKg;

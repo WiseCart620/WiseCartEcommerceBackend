@@ -6,10 +6,12 @@ import lombok.Data;
 
 @Data
 public class JntShippingRateRequest {
+
     private String originProvince;
     private String originCity;
     private String destinationProvince;
     private String destinationCity;
+    private String destinationBarangay;
     private String serviceType;
     private String bagSize;
     private BigDecimal minWeightKg;

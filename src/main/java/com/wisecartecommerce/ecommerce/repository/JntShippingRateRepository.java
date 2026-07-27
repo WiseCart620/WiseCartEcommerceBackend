@@ -41,6 +41,26 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         AND UPPER(r.originCity) = UPPER(:originCity)
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
         AND UPPER(r.destinationCity) = UPPER(:destinationCity)
+        AND UPPER(r.destinationBarangay) = UPPER(:barangay)
+        AND r.minWeightKg <= :weight
+        AND (r.maxWeightKg IS NULL OR r.maxWeightKg >= :weight)
+        ORDER BY r.minWeightKg DESC
+        """)
+    List<JntShippingRate> findMatchingRatesWithBarangay(
+            @Param("originProvince") String originProvince,
+            @Param("originCity") String originCity,
+            @Param("destinationProvince") String destinationProvince,
+            @Param("destinationCity") String destinationCity,
+            @Param("barangay") String barangay,
+            @Param("weight") BigDecimal weight);
+
+    @Query("""
+        SELECT r FROM JntShippingRate r
+        WHERE r.active = true
+        AND UPPER(r.originProvince) = UPPER(:originProvince)
+        AND UPPER(r.originCity) = UPPER(:originCity)
+        AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
+        AND UPPER(r.destinationCity) = UPPER(:destinationCity)
         ORDER BY r.minWeightKg DESC
         """)
     List<JntShippingRate> findAllForRoute(

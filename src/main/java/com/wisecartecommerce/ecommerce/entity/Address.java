@@ -64,6 +64,9 @@ public class Address {
     @Column(nullable = false)
     private String city;
 
+    @Column(name = "barangay")
+    private String barangay;
+
     @Column(nullable = false)
     private String state;
 

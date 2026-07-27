@@ -124,6 +124,13 @@ public class Order {
     @Column(name = "cancelled_at")
     private LocalDateTime cancelledAt;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "jnt_tracking_status")
+    private com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status jntTrackingStatus;
+
+    @Column(name = "jnt_picked_up_at")
+    private LocalDateTime jntPickedUpAt;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     @BatchSize(size = 30)
     @Builder.Default

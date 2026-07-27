@@ -61,6 +61,9 @@ public interface OrderService {
 
     void syncFlashDeliveryStatus(String pno);
 
+    OrderResponse updateJntTracking(Long orderId, String trackingNumber,
+            com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status status);
+
     OrderResponse requestMayaRefund(Long orderId, String reason, BigDecimal customAmount);
 
     OrderResponse requestMayaVoid(Long orderId, String reason);

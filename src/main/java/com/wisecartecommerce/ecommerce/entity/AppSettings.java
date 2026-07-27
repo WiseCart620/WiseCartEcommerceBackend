@@ -43,6 +43,12 @@ public class AppSettings {
     @Builder.Default
     private boolean buyNowEnabled = true;
 
+    @Column(name = "jnt_origin_province")
+    private String jntOriginProvince;
+
+    @Column(name = "jnt_origin_city")
+    private String jntOriginCity;
+
     @PrePersist
     @PreUpdate
     public void onUpdate() {

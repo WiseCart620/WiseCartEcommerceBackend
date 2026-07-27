@@ -51,4 +51,13 @@ public class ShippingWeightCalculator {
     public int calculateRawWeightGrams(int weightGramsPerItem, int quantity) {
         return Math.max(weightGramsPerItem * quantity, DEFAULT_ITEM_WEIGHT_GRAMS);
     }
+
+    /**
+     * Cart weight in KG (2 decimals), for J&T's KG-based rate table.
+     */
+    public java.math.BigDecimal calculateCartWeightKg(List<CartItem> items) {
+        int grams = calculateCartWeightGrams(items);
+        return java.math.BigDecimal.valueOf(grams)
+                .divide(java.math.BigDecimal.valueOf(1000), 2, java.math.RoundingMode.HALF_UP);
+    }
 }

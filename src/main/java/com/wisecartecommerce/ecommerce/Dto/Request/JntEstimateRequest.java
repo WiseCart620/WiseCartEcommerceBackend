@@ -10,5 +10,6 @@ public class JntEstimateRequest {
     private String originCity;
     private String destinationProvince;
     private String destinationCity;
+    private String destinationBarangay;
     private BigDecimal weightKg;
 }

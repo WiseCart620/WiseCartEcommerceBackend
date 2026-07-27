@@ -37,6 +37,8 @@ public class OrderResponse {
     private String trackingNumber;
     private Integer flashState;
     private String shippingCarrier;
+    private String jntTrackingStatus;
+    private LocalDateTime jntPickedUpAt;
     private LocalDateTime estimatedDelivery;
     private LocalDateTime deliveredAt;
     private List<OrderItemResponse> items;
@@ -101,6 +103,7 @@ public class OrderResponse {
         private String phone;
         private String addressLine1;
         private String addressLine2;
+        private String barangay;
         private String city;
         private String state;
         private String postalCode;

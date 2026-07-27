@@ -22,7 +22,9 @@ public class JntShippingService {
     private final JntShippingRateRepository rateRepository;
 
     public Page<JntShippingRate> getAllRates(String search, Pageable pageable) {
-        if (search == null || search.isBlank()) return rateRepository.findAll(pageable);
+        if (search == null || search.isBlank()) {
+            return rateRepository.findAll(pageable);
+        }
         return rateRepository.findByDestinationProvinceContainingIgnoreCaseOrDestinationCityContainingIgnoreCase(
                 search, search, pageable);
     }
@@ -59,6 +61,10 @@ public class JntShippingService {
         rate.setOriginCity(req.getOriginCity().trim().toUpperCase());
         rate.setDestinationProvince(req.getDestinationProvince().trim().toUpperCase());
         rate.setDestinationCity(req.getDestinationCity().trim().toUpperCase());
+        rate.setDestinationBarangay(
+                req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
+                        ? req.getDestinationBarangay().trim().toUpperCase()
+                        : null);
         rate.setServiceType(req.getServiceType());
         rate.setBagSize(req.getBagSize());
         rate.setMinWeightKg(req.getMinWeightKg());
@@ -69,17 +75,41 @@ public class JntShippingService {
         rate.setActive(req.getActive() != null ? req.getActive() : true);
     }
 
-    public List<String> getOriginProvinces() { return rateRepository.findDistinctOriginProvinces(); }
-    public List<String> getOriginCities(String province) { return rateRepository.findDistinctOriginCities(province); }
-    public List<String> getDestinationProvinces() { return rateRepository.findDistinctDestinationProvinces(); }
-    public List<String> getDestinationCities(String province) { return rateRepository.findDistinctDestinationCities(province); }
+    public List<String> getOriginProvinces() {
+        return rateRepository.findDistinctOriginProvinces();
+    }
+
+    public List<String> getOriginCities(String province) {
+        return rateRepository.findDistinctOriginCities(province);
+    }
+
+    public List<String> getDestinationProvinces() {
+        return rateRepository.findDistinctDestinationProvinces();
+    }
+
+    public List<String> getDestinationCities(String province) {
+        return rateRepository.findDistinctDestinationCities(province);
+    }
 
     public JntEstimateResponse estimate(JntEstimateRequest req) {
         BigDecimal weight = req.getWeightKg() != null ? req.getWeightKg() : BigDecimal.ONE;
+        String barangay = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
+                ? req.getDestinationBarangay().trim().toUpperCase()
+                : null;
 
-        List<JntShippingRate> matches = rateRepository.findMatchingRates(
-                req.getOriginProvince(), req.getOriginCity(),
-                req.getDestinationProvince(), req.getDestinationCity(), weight);
+        // 1) Try a barangay-specific match first, if a barangay was supplied
+        List<JntShippingRate> matches = barangay != null
+                ? rateRepository.findMatchingRatesWithBarangay(
+                        req.getOriginProvince(), req.getOriginCity(),
+                        req.getDestinationProvince(), req.getDestinationCity(), barangay, weight)
+                : List.of();
+
+        // 2) Fall back to the city-level rate (no barangay set on the rate)
+        if (matches.isEmpty()) {
+            matches = rateRepository.findMatchingRates(
+                    req.getOriginProvince(), req.getOriginCity(),
+                    req.getDestinationProvince(), req.getDestinationCity(), weight);
+        }
 
         JntShippingRate rate;
         BigDecimal extraFee = BigDecimal.ZERO;
@@ -112,6 +142,7 @@ public class JntShippingService {
         return new JntEstimateResponse(
                 rate.getOriginProvince(), rate.getOriginCity(),
                 rate.getDestinationProvince(), rate.getDestinationCity(),
+                rate.getDestinationBarangay(),
                 rate.getServiceType(), rate.getBagSize(),
                 weight, shippingFee, itemFee, total
         );

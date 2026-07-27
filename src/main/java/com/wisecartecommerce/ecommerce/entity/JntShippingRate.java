@@ -34,6 +34,9 @@ public class JntShippingRate {
     @Column(nullable = false)
     private String destinationCity;
 
+    @Column(name = "destination_barangay")
+    private String destinationBarangay;
+
     @Column(nullable = false)
     private String serviceType; // e.g. "EZ", "Standard"
 
@@ -64,8 +67,14 @@ public class JntShippingRate {
     private LocalDateTime updatedAt;
 
     @PrePersist
-    protected void onCreate() { createdAt = LocalDateTime.now(); updatedAt = LocalDateTime.now(); }
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+        updatedAt = LocalDateTime.now();
+    }
 
     @PreUpdate
-    protected void onUpdate() { updatedAt = LocalDateTime.now(); }
+    protected void onUpdate() {
+        updatedAt = LocalDateTime.now();
+    }
+
 }

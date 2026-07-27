@@ -12,12 +12,14 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddressResponse {
+
     private Long id;
     private String firstName;
     private String lastName;
     private String phone;
     private String addressLine1;
     private String addressLine2;
+    private String barangay;
     private String city;
     private String state;
     private String postalCode;

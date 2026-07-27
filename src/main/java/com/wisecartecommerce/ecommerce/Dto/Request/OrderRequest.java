@@ -16,7 +16,7 @@ public class OrderRequest {
     private String couponCode;
     private Integer expressCategory;
     private String mayaPaymentMethod;
-    
+    private String shippingCarrier;
 
     @Data
     public static class AddressData {
@@ -25,6 +25,7 @@ public class OrderRequest {
         private String lastName;
         private String addressLine1;
         private String addressLine2;
+        private String barangay;
         private String city;
         private String state;
         private String postalCode;

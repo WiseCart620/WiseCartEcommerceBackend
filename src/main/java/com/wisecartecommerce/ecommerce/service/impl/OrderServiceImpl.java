@@ -92,6 +92,7 @@ public class OrderServiceImpl implements OrderService {
     private final CouponValidator couponValidator;
     private final RateLimitService rateLimitService;
     private final AppSettingsRepository appSettingsRepository;
+    private final com.wisecartecommerce.ecommerce.service.JntShippingService jntShippingService;
 
     // ── Constants ──────────────────────────────────────────────────────────────
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
@@ -196,6 +197,7 @@ public class OrderServiceImpl implements OrderService {
             log.info("Free shipping applied via coupon '{}'", couponCode);
         } else {
             shippingAmount = resolveShippingFee(
+                    request.getShippingCarrier(),
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
@@ -251,10 +253,15 @@ public class OrderServiceImpl implements OrderService {
         paymentRepository.save(mayaPayment);
         saved.getPayments().add(mayaPayment);
 
-        int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
-        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
-        assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
-        saved = orderRepository.save(saved);
+        if ("jnt".equalsIgnoreCase(request.getShippingCarrier())) {
+            saved.setShippingCarrier("J&T Express");
+            saved = orderRepository.save(saved);
+        } else {
+            int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
+            int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+            assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
+            saved = orderRepository.save(saved);
+        }
 
 // ── NOW update stock (after order is successfully saved) ──────────────
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
@@ -391,6 +398,7 @@ public class OrderServiceImpl implements OrderService {
             shippingAmount = BigDecimal.ZERO;
         } else {
             shippingAmount = resolveShippingFee(
+                    request.getShippingCarrier(),
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
@@ -403,6 +411,7 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
 
         boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
+        boolean useJnt = "jnt".equalsIgnoreCase(request.getShippingCarrier());
 
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
@@ -443,21 +452,20 @@ public class OrderServiceImpl implements OrderService {
         paymentRepository.save(mayaPayment);
         saved.getPayments().add(mayaPayment);
 
-        int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
-        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
-        assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
-        saved = orderRepository.save(saved);
+        if (useJnt) {
+            saved.setShippingCarrier("J&T Express");
+            saved = orderRepository.save(saved);
+        } else {
+            int weightGrams = weightCalculator.calculateCartWeightGrams(cart.getItems());
+            int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+            assignFlashOrderNumber(saved, shippingAddress, weightGrams, category);
+            saved = orderRepository.save(saved);
+        }
 
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
             productRepository.findById(entry.getKey()).ifPresent(p -> {
                 p.setStockQuantity(entry.getValue());
                 productRepository.save(p);
-            });
-        }
-        for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
-            productVariationRepository.findById(entry.getKey()).ifPresent(v -> {
-                v.setStockQuantity(entry.getValue());
-                productVariationRepository.save(v);
             });
         }
 
@@ -508,6 +516,7 @@ public class OrderServiceImpl implements OrderService {
                 .phone(request.getGuestPhone() != null ? request.getGuestPhone() : request.getPhone())
                 .addressLine1(request.getAddressLine1())
                 .addressLine2(request.getAddressLine2())
+                .barangay(request.getBarangay())
                 .city(request.getCity())
                 .state(request.getState())
                 .postalCode(request.getPostalCode())
@@ -612,6 +621,32 @@ public class OrderServiceImpl implements OrderService {
             shippingAmount = BigDecimal.ZERO;
         } else if (taxableSubtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             shippingAmount = BigDecimal.ZERO;
+        } else if ("jnt".equalsIgnoreCase(request.getShippingCarrier())) {
+            try {
+                BigDecimal weightKg = BigDecimal.valueOf(
+                        Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS))
+                        .divide(BigDecimal.valueOf(1000), 2, RoundingMode.HALF_UP);
+
+                AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
+                String originProvince = settings != null && settings.getJntOriginProvince() != null
+                        ? settings.getJntOriginProvince() : "CEBU";
+                String originCity = settings != null && settings.getJntOriginCity() != null
+                        ? settings.getJntOriginCity() : "CEBU-CITY";
+
+                com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest jntReq
+                        = new com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest();
+                jntReq.setOriginProvince(originProvince);
+                jntReq.setOriginCity(originCity);
+                jntReq.setDestinationProvince(request.getState());
+                jntReq.setDestinationCity(request.getCity());
+                jntReq.setDestinationBarangay(request.getBarangay());
+                jntReq.setWeightKg(weightKg);
+
+                shippingAmount = jntShippingService.estimate(jntReq).getTotalAmount();
+            } catch (Exception e) {
+                log.warn("J&T shipping failed for guest order: {}", e.getMessage());
+                shippingAmount = FALLBACK_SHIPPING;
+            }
         } else {
             try {
                 int cat = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
@@ -661,10 +696,15 @@ public class OrderServiceImpl implements OrderService {
         Order saved = orderRepository.save(order);
         orderRepository.flush();
 
-        int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
-        int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
-        assignFlashOrderNumber(saved, shippingAddress, weight, category);
-        saved = orderRepository.save(saved);
+        if ("jnt".equalsIgnoreCase(request.getShippingCarrier())) {
+            saved.setShippingCarrier("J&T Express");
+            saved = orderRepository.save(saved);
+        } else {
+            int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
+            int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
+            assignFlashOrderNumber(saved, shippingAddress, weight, category);
+            saved = orderRepository.save(saved);
+        }
 
         for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
             Product product = productRepository.findById(entry.getKey()).orElse(null);
@@ -731,6 +771,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private BigDecimal resolveShippingFee(
+            String shippingCarrier,
             Integer expressCategory,
             Address destination,
             BigDecimal subtotal,
@@ -739,6 +780,10 @@ public class OrderServiceImpl implements OrderService {
         if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             log.info("Free shipping applied (subtotal ₱{})", subtotal);
             return BigDecimal.ZERO;
+        }
+
+        if ("jnt".equalsIgnoreCase(shippingCarrier)) {
+            return resolveJntShippingFee(destination, cartItems);
         }
 
         try {
@@ -753,6 +798,41 @@ public class OrderServiceImpl implements OrderService {
             return fee;
         } catch (Exception e) {
             log.warn("Flash Express unavailable, using fallback: {}", e.getMessage());
+            return FALLBACK_SHIPPING;
+        }
+    }
+
+    /**
+     * Looks up J&T's admin-configured rate table using the ACTUAL product
+     * weight (converted to KG) and the destination's province/city/barangay.
+     * Origin is fixed from AppSettings (your warehouse), not chosen by the
+     * customer.
+     */
+    private BigDecimal resolveJntShippingFee(Address destination, List<CartItem> cartItems) {
+        try {
+            BigDecimal weightKg = weightCalculator.calculateCartWeightKg(cartItems);
+
+            AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
+            String originProvince = settings != null && settings.getJntOriginProvince() != null
+                    ? settings.getJntOriginProvince() : "CEBU";
+            String originCity = settings != null && settings.getJntOriginCity() != null
+                    ? settings.getJntOriginCity() : "CEBU-CITY";
+
+            com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest req
+                    = new com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest();
+            req.setOriginProvince(originProvince);
+            req.setOriginCity(originCity);
+            req.setDestinationProvince(destination.getState());
+            req.setDestinationCity(destination.getCity());
+            req.setDestinationBarangay(destination.getBarangay());
+            req.setWeightKg(weightKg);
+
+            com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse est = jntShippingService.estimate(req);
+            log.info("J&T Express: ₱{} ({}kg, {}/{}/{})", est.getTotalAmount(), weightKg,
+                    destination.getState(), destination.getCity(), destination.getBarangay());
+            return est.getTotalAmount();
+        } catch (Exception e) {
+            log.warn("J&T Express unavailable, using fallback: {}", e.getMessage());
             return FALLBACK_SHIPPING;
         }
     }
@@ -876,9 +956,11 @@ public class OrderServiceImpl implements OrderService {
 
         switch (status) {
             case SHIPPED -> {
-                order.setShippingCarrier("Flash Express");
-                if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
-                    order.setTrackingNumber("FE" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
+                if (order.getShippingCarrier() == null || !order.getShippingCarrier().contains("J&T")) {
+                    order.setShippingCarrier("Flash Express");
+                    if (order.getTrackingNumber() == null || order.getTrackingNumber().isBlank()) {
+                        order.setTrackingNumber("FE" + UUID.randomUUID().toString().substring(0, 12).toUpperCase());
+                    }
                 }
                 order.setEstimatedDelivery(LocalDateTime.now().plusDays(3));
             }
@@ -923,6 +1005,98 @@ public class OrderServiceImpl implements OrderService {
         }
         log.info("Order {} status: {} → {}", order.getOrderNumber(), prev, status);
         return mapToOrderResponse(updated);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateJntTracking(Long orderId, String trackingNumber,
+            com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status status) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getShippingCarrier() == null || !order.getShippingCarrier().contains("J&T")) {
+            throw new CustomException("This order is not shipped via J&T Express");
+        }
+
+        if (trackingNumber != null && !trackingNumber.isBlank()) {
+            order.setTrackingNumber(trackingNumber.trim());
+        }
+
+        var prevJntStatus = order.getJntTrackingStatus();
+        order.setJntTrackingStatus(status);
+
+        if (status == com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status.PICKED_UP
+                && order.getJntPickedUpAt() == null) {
+            order.setJntPickedUpAt(LocalDateTime.now());
+        }
+
+        switch (status) {
+            case DELIVERED -> {
+                order.setStatus(OrderStatus.DELIVERED);
+                order.setDeliveredAt(LocalDateTime.now());
+                boolean isCod = "cod".equalsIgnoreCase(order.getPaymentMethod());
+                if (isCod) {
+                    order.setPaymentStatus(PaymentStatus.COMPLETED);
+                    order.getPayments().stream()
+                            .filter(p -> p.getStatus() != PaymentStatus.COMPLETED)
+                            .forEach(p -> {
+                                p.setStatus(PaymentStatus.COMPLETED);
+                                p.setCompletedAt(LocalDateTime.now());
+                                paymentRepository.save(p);
+                            });
+                }
+            }
+            case RETURNED ->
+                order.setStatus(OrderStatus.RETURNED);
+            case OUT_FOR_DELIVERY -> {
+                if (order.getStatus() == OrderStatus.PENDING) {
+                    order.setStatus(OrderStatus.PROCESSING);
+                }
+            }
+            default -> {
+                // AWAITING_PICKUP, PICKED_UP, IN_TRANSIT — leave order.status alone
+            }
+        }
+
+        Order saved = orderRepository.save(order);
+
+        if (prevJntStatus != status) {
+            emailService.sendOrderStatusUpdateEmail(saved);
+            String title = switch (status) {
+                case PICKED_UP ->
+                    "Order Picked Up 📬";
+                case IN_TRANSIT ->
+                    "Order In Transit 🚚";
+                case OUT_FOR_DELIVERY ->
+                    "Out for Delivery 🚛";
+                case DELIVERED ->
+                    "Order Delivered 📦";
+                case RETURNED ->
+                    "Order Returned";
+                default ->
+                    "Order Update";
+            };
+            String message = switch (status) {
+                case PICKED_UP ->
+                    "Your order #" + saved.getOrderNumber() + " has been picked up by J&T Express.";
+                case IN_TRANSIT ->
+                    "Your order #" + saved.getOrderNumber() + " is in transit.";
+                case OUT_FOR_DELIVERY ->
+                    "Your order #" + saved.getOrderNumber() + " is out for delivery.";
+                case DELIVERED ->
+                    "Your order #" + saved.getOrderNumber() + " has been delivered. Enjoy!";
+                case RETURNED ->
+                    "Your order #" + saved.getOrderNumber() + " is being returned to sender.";
+                default ->
+                    "Your order #" + saved.getOrderNumber() + " status changed.";
+            };
+            sendOrderStatusNotification(saved, title, message);
+        }
+
+        log.info("J&T tracking updated: order={} status={} tracking={}",
+                saved.getOrderNumber(), status, saved.getTrackingNumber());
+
+        return mapToOrderResponse(saved);
     }
 
     @Override
@@ -1117,6 +1291,7 @@ public class OrderServiceImpl implements OrderService {
                     .lastName(data.getLastName())
                     .addressLine1(data.getAddressLine1())
                     .addressLine2(data.getAddressLine2())
+                    .barangay(data.getBarangay())
                     .city(data.getCity())
                     .state(data.getState())
                     .postalCode(data.getPostalCode())
@@ -1163,6 +1338,8 @@ public class OrderServiceImpl implements OrderService {
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
                 .flashState(order.getFlashState())
+                .jntTrackingStatus(order.getJntTrackingStatus() != null ? order.getJntTrackingStatus().name() : null)
+                .jntPickedUpAt(order.getJntPickedUpAt())
                 .build();
     }
 
@@ -1187,6 +1364,8 @@ public class OrderServiceImpl implements OrderService {
                 .notes(order.getNotes())
                 .createdAt(order.getCreatedAt())
                 .updatedAt(order.getUpdatedAt())
+                .jntTrackingStatus(order.getJntTrackingStatus() != null ? order.getJntTrackingStatus().name() : null)
+                .jntPickedUpAt(order.getJntPickedUpAt())
                 .build();
     }
 
@@ -1242,6 +1421,7 @@ public class OrderServiceImpl implements OrderService {
                 .phone(address.getPhone())
                 .addressLine1(address.getAddressLine1())
                 .addressLine2(address.getAddressLine2())
+                .barangay(address.getBarangay())
                 .city(address.getCity())
                 .state(address.getState())
                 .postalCode(address.getPostalCode())

@@ -33,6 +33,9 @@ public class AddressRequest {
     @Size(max = 255, message = "Address line 2 must be less than 255 characters")
     private String addressLine2;
 
+    @Size(max = 255, message = "Barangay must be less than 255 characters")
+    private String barangay;
+
     @NotBlank(message = "City is required")
     @Size(min = 2, max = 100, message = "City must be between 2 and 100 characters")
     private String city;
@@ -59,6 +62,5 @@ public class AddressRequest {
 
     @Builder.Default
     private Boolean isDefault = false;
-
 
 }
