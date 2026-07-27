@@ -46,7 +46,17 @@ services:
       --innodb_log_file_size=64M
       --skip-name-resolve
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      test:
+        [
+          "CMD",
+          "mysqladmin",
+          "ping",
+          "-h",
+          "localhost",
+          "-u",
+          "root",
+          "-p${MYSQL_ROOT_PASSWORD}",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -85,8 +95,10 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
       # Mail
-      - EMAIL_USERNAME=${EMAIL_USERNAME}
-      - EMAIL_PASSWORD=${EMAIL_PASSWORD}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
+      - BREVO_API_KEY=${BREVO_API_KEY}
+      - BREVO_FROM_EMAIL=${BREVO_FROM_EMAIL}
       - CONTACT_RECIPIENT_EMAIL=${CONTACT_RECIPIENT_EMAIL}
       - ADMIN_FIRST_NAME=${ADMIN_FIRST_NAME}
       - ADMIN_LAST_NAME=${ADMIN_LAST_NAME}

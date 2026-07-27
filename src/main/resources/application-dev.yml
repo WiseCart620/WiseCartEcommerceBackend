@@ -22,17 +22,13 @@ spring:
     baseline-on-migrate: true
     clean-disabled: true
 
-  mail:
-    host: smtp.gmail.com
-    port: 587
-    username: ${EMAIL_USERNAME:sales@wisecart.ph}
-    password: ${EMAIL_PASSWORD:pykxswqacfjailtu}
-    properties:
-      mail:
-        smtp:
-          auth: true
-          starttls:
-            enable: true
+resend:
+  api-key: ${RESEND_API_KEY:}
+  from-email: ${RESEND_FROM_EMAIL:onboarding@resend.dev}
+
+brevo:
+  api-key: ${BREVO_API_KEY:}
+  from-email: ${BREVO_FROM_EMAIL:sales@wisecart.ph}
 
 app:
   admin:
@@ -78,14 +74,13 @@ maya:
   failure-url: ${MAYA_FAILURE_URL:http://localhost:3000/payment/failed}
   cancel-url: ${MAYA_CANCEL_URL:http://localhost:3000/payment/cancelled}
   webhook-url: ${MAYA_WEBHOOK_URL:https://unrevertible-senaida-continentally.ngrok-free.dev/api/webhooks/maya}
- 
+
 logging:
   file:
     name: logs/spring.log
   level:
     root: INFO
     com.wisecartecommerce: DEBUG
-
 
 firebase:
   api-key: AIzaSyBpZg_me0mqOQLHFNKMiYBT0_JaEdMBIK8
