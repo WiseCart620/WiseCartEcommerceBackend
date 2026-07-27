@@ -28,7 +28,7 @@ public class ShippingController {
 
     private final FlashExpressShippingService shippingService;
     private final AddressRepository addressRepository;
-
+    private final com.wisecartecommerce.ecommerce.service.JntShippingService jntShippingService;
 
     @PostMapping("/estimate")
     @PreAuthorize("hasRole('CUSTOMER')")
@@ -45,7 +45,6 @@ public class ShippingController {
 
         return ResponseEntity.ok(ApiResponse.success("Shipping rate retrieved", rate));
     }
-
 
     @PostMapping("/estimate/manual")
     @Operation(summary = "Estimate shipping fee from address fields")
@@ -66,6 +65,7 @@ public class ShippingController {
 
     @Data
     public static class EstimateByAddressRequest {
+
         private Long addressId;
         private int weightGrams;
         private Integer expressCategory;
@@ -73,10 +73,18 @@ public class ShippingController {
 
     @Data
     public static class ManualEstimateRequest {
+
         private String dstProvinceName;
         private String dstCityName;
         private String dstPostalCode;
         private int weightGrams;
         private Integer expressCategory;
+    }
+
+    @PostMapping("/jnt/estimate")
+    @Operation(summary = "Estimate J&T Express shipping fee using configured rate table")
+    public ResponseEntity<ApiResponse<com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse>> estimateJnt(
+            @RequestBody com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest req) {
+        return ResponseEntity.ok(ApiResponse.success("J&T rate retrieved", jntShippingService.estimate(req)));
     }
 }

@@ -23,6 +23,7 @@ import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashNotifyResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.FlashTrackingResponse;
 import com.wisecartecommerce.ecommerce.entity.Order;
+import com.wisecartecommerce.ecommerce.repository.AddressRepository;
 import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 import com.wisecartecommerce.ecommerce.service.FlashExpressShippingService;
 import com.wisecartecommerce.ecommerce.service.OrderService;
@@ -45,6 +46,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AdminShippingController {
 
     private final FlashExpressShippingService shippingService;
+    private final AddressRepository addressRepository;
+    private final com.wisecartecommerce.ecommerce.service.JntShippingService jntShippingService;
     private final OrderRepository orderRepository;
     private final OrderService orderService;
 
