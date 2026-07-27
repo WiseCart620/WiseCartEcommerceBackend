@@ -1,0 +1,29 @@
+[33mcommit 924a788bdb979a6e1e9c05d56d8ffedb18b15da0[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: albert <salbertjurcales37@gmail.com>
+Date:   Mon Jul 27 14:07:11 2026 +0800
+
+    Clean up migration comments
+
+[1mdiff --git a/src/main/resources/db/migration/V68__add_jnt_shipping_rates.sql b/src/main/resources/db/migration/V68__add_jnt_shipping_rates.sql[m
+[1mindex 7664126..7eac54b 100644[m
+[1m--- a/src/main/resources/db/migration/V68__add_jnt_shipping_rates.sql[m
+[1m+++ b/src/main/resources/db/migration/V68__add_jnt_shipping_rates.sql[m
+[36m@@ -1,6 +1,3 @@[m
+[31m--- V68__add_jnt_shipping_rates.sql[m
+[31m--- Manually-configured J&T Express shipping rate table[m
+[31m--- (no J&T API access available, so rates are entered and maintained by admins)[m
+ [m
+ CREATE TABLE jnt_shipping_rates ([m
+     id                            BIGINT AUTO_INCREMENT PRIMARY KEY,[m
+[36m@@ -27,10 +24,8 @@[m [mCREATE TABLE jnt_shipping_rates ([m
+     updated_at                    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP[m
+ );[m
+ [m
+[31m--- Speeds up the route lookup used by JntShippingRateRepository.findMatchingRates / findAllForRoute[m
+ CREATE INDEX idx_jnt_rates_route[m
+     ON jnt_shipping_rates (origin_province, origin_city, destination_province, destination_city);[m
+ [m
+[31m--- Speeds up admin table search by destination[m
+ CREATE INDEX idx_jnt_rates_destination[m
+     ON jnt_shipping_rates (destination_province, destination_city);[m
+\ No newline at end of file[m
