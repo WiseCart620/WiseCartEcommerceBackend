@@ -629,8 +629,10 @@ public class OrderServiceImpl implements OrderService {
 
                 AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
                 String originProvince = settings != null && settings.getJntOriginProvince() != null
+                        && !settings.getJntOriginProvince().isBlank()
                         ? settings.getJntOriginProvince() : "CEBU";
                 String originCity = settings != null && settings.getJntOriginCity() != null
+                        && !settings.getJntOriginCity().isBlank()
                         ? settings.getJntOriginCity() : "CEBU-CITY";
 
                 com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest jntReq
@@ -814,8 +816,10 @@ public class OrderServiceImpl implements OrderService {
 
             AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
             String originProvince = settings != null && settings.getJntOriginProvince() != null
+                    && !settings.getJntOriginProvince().isBlank()
                     ? settings.getJntOriginProvince() : "CEBU";
             String originCity = settings != null && settings.getJntOriginCity() != null
+                    && !settings.getJntOriginCity().isBlank()
                     ? settings.getJntOriginCity() : "CEBU-CITY";
 
             com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest req

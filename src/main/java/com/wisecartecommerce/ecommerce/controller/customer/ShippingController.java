@@ -28,6 +28,7 @@ public class ShippingController {
 
     private final FlashExpressShippingService shippingService;
     private final AddressRepository addressRepository;
+    private final com.wisecartecommerce.ecommerce.repository.AppSettingsRepository appSettingsRepository;
     private final com.wisecartecommerce.ecommerce.service.JntShippingService jntShippingService;
 
     @PostMapping("/estimate")
@@ -85,6 +86,18 @@ public class ShippingController {
     @Operation(summary = "Estimate J&T Express shipping fee using configured rate table")
     public ResponseEntity<ApiResponse<com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse>> estimateJnt(
             @RequestBody com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest req) {
+
+        com.wisecartecommerce.ecommerce.entity.AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
+        String originProvince = settings != null && settings.getJntOriginProvince() != null
+                && !settings.getJntOriginProvince().isBlank()
+                ? settings.getJntOriginProvince() : "CEBU";
+        String originCity = settings != null && settings.getJntOriginCity() != null
+                && !settings.getJntOriginCity().isBlank()
+                ? settings.getJntOriginCity() : "CEBU-CITY";
+
+        req.setOriginProvince(originProvince);
+        req.setOriginCity(originCity);
+
         return ResponseEntity.ok(ApiResponse.success("J&T rate retrieved", jntShippingService.estimate(req)));
     }
 }
