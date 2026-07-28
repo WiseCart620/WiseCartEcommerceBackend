@@ -1289,6 +1289,12 @@ public class OrderServiceImpl implements OrderService {
             return a;
         }
         if (data != null) {
+            Optional<Address> existing = addressRepository.findByUserId(user.getId()).stream()
+                    .filter(a -> isSameAddress(a, data))
+                    .findFirst();
+            if (existing.isPresent()) {
+                return existing.get();
+            }
             return addressRepository.save(Address.builder()
                     .user(user)
                     .firstName(data.getFirstName())
@@ -1307,6 +1313,23 @@ public class OrderServiceImpl implements OrderService {
                     .build());
         }
         throw new CustomException("Shipping address is required");
+    }
+
+    private boolean isSameAddress(Address a, OrderRequest.AddressData d) {
+        return eq(a.getAddressLine1(), d.getAddressLine1())
+                && eq(a.getAddressLine2(), d.getAddressLine2())
+                && eq(a.getBarangay(), d.getBarangay())
+                && eq(a.getCity(), d.getCity())
+                && eq(a.getState(), d.getState())
+                && eq(a.getPostalCode(), d.getPostalCode())
+                && eq(a.getCountry(), d.getCountry())
+                && eq(a.getPhone(), d.getPhone());
+    }
+
+    private boolean eq(String a, String b) {
+        String x = a == null ? "" : a.trim();
+        String y = b == null ? "" : b.trim();
+        return x.equalsIgnoreCase(y);
     }
 
     // ── Response mapping ───────────────────────────────────────────────────────
