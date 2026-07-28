@@ -26,13 +26,13 @@ import com.wisecartecommerce.ecommerce.entity.User;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AddressRepository;
+import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
 import com.wisecartecommerce.ecommerce.repository.PendingCheckoutRepository;
 import com.wisecartecommerce.ecommerce.repository.UserRepository;
 import com.wisecartecommerce.ecommerce.service.FileStorageService;
 import com.wisecartecommerce.ecommerce.service.FirebaseAdminService;
 import com.wisecartecommerce.ecommerce.service.UserService;
 import com.wisecartecommerce.ecommerce.util.Role;
-import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -176,6 +176,7 @@ public class UserServiceImpl implements UserService {
                 .phone(request.getPhone())
                 .addressLine1(request.getAddressLine1())
                 .addressLine2(request.getAddressLine2())
+                .barangay(request.getBarangay())
                 .city(request.getCity())
                 .state(request.getState())
                 .postalCode(request.getPostalCode())
@@ -224,6 +225,9 @@ public class UserServiceImpl implements UserService {
         }
         if (request.getAddressLine2() != null) {
             address.setAddressLine2(request.getAddressLine2());
+        }
+        if (request.getBarangay() != null) {
+            address.setBarangay(request.getBarangay());
         }
         if (request.getCity() != null) {
             address.setCity(request.getCity());
@@ -542,6 +546,7 @@ public class UserServiceImpl implements UserService {
                 .phone(address.getPhone())
                 .addressLine1(address.getAddressLine1())
                 .addressLine2(address.getAddressLine2())
+                .barangay(address.getBarangay())
                 .city(address.getCity())
                 .state(address.getState())
                 .postalCode(address.getPostalCode())
