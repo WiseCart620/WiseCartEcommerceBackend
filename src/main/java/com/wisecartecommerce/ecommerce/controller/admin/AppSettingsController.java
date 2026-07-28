@@ -42,7 +42,6 @@ public class AppSettingsController {
         return ResponseEntity.ok(getOrCreateSettings());
     }
 
-
     @GetMapping("/public/storefront/settings")
     public ResponseEntity<?> getPublicSettings() {
         AppSettings s = getOrCreateSettings();
@@ -54,7 +53,6 @@ public class AppSettingsController {
         ));
     }
 
-    
     @PutMapping("/admin/settings")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<AppSettings> updateSettings(@RequestBody AppSettings request) {
@@ -66,6 +64,8 @@ public class AppSettingsController {
         settings.setStorePhone(request.getStorePhone());
         settings.setCartEnabled(request.isCartEnabled());
         settings.setBuyNowEnabled(request.isBuyNowEnabled());
+        settings.setJntOriginProvince(request.getJntOriginProvince());
+        settings.setJntOriginCity(request.getJntOriginCity());
         return ResponseEntity.ok(repository.save(settings));
     }
 }

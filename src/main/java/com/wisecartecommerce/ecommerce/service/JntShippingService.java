@@ -1,19 +1,21 @@
 package com.wisecartecommerce.ecommerce.service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.List;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse;
 import com.wisecartecommerce.ecommerce.entity.JntShippingRate;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.JntShippingRateRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
-import java.math.RoundingMode;
-import java.util.List;
+import lombok.RequiredArgsConstructor;
 
 @Service
 @RequiredArgsConstructor
@@ -63,8 +65,8 @@ public class JntShippingService {
         rate.setDestinationCity(req.getDestinationCity().trim().toUpperCase());
         rate.setDestinationBarangay(
                 req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
-                        ? req.getDestinationBarangay().trim().toUpperCase()
-                        : null);
+                ? req.getDestinationBarangay().trim().toUpperCase()
+                : null);
         rate.setServiceType(req.getServiceType());
         rate.setBagSize(req.getBagSize());
         rate.setMinWeightKg(req.getMinWeightKg());
@@ -93,22 +95,24 @@ public class JntShippingService {
 
     public JntEstimateResponse estimate(JntEstimateRequest req) {
         BigDecimal weight = req.getWeightKg() != null ? req.getWeightKg() : BigDecimal.ONE;
+        String originProvince = req.getOriginProvince() != null ? req.getOriginProvince().trim().toUpperCase() : null;
+        String originCity = req.getOriginCity() != null ? req.getOriginCity().trim().toUpperCase() : null;
+        String destProvince = req.getDestinationProvince() != null ? req.getDestinationProvince().trim().toUpperCase() : null;
+        String destCity = req.getDestinationCity() != null ? req.getDestinationCity().trim().toUpperCase() : null;
         String barangay = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? req.getDestinationBarangay().trim().toUpperCase()
                 : null;
 
-        // 1) Try a barangay-specific match first, if a barangay was supplied
         List<JntShippingRate> matches = barangay != null
                 ? rateRepository.findMatchingRatesWithBarangay(
-                        req.getOriginProvince(), req.getOriginCity(),
-                        req.getDestinationProvince(), req.getDestinationCity(), barangay, weight)
+                        originProvince, originCity,
+                        destProvince, destCity, barangay, weight)
                 : List.of();
 
-        // 2) Fall back to the city-level rate (no barangay set on the rate)
         if (matches.isEmpty()) {
             matches = rateRepository.findMatchingRates(
-                    req.getOriginProvince(), req.getOriginCity(),
-                    req.getDestinationProvince(), req.getDestinationCity(), weight);
+                    originProvince, originCity,
+                    destProvince, destCity, weight);
         }
 
         JntShippingRate rate;
@@ -118,8 +122,8 @@ public class JntShippingService {
             rate = matches.get(0);
         } else {
             List<JntShippingRate> allForRoute = rateRepository.findAllForRoute(
-                    req.getOriginProvince(), req.getOriginCity(),
-                    req.getDestinationProvince(), req.getDestinationCity());
+                    originProvince, originCity,
+                    destProvince, destCity);
 
             if (allForRoute.isEmpty()) {
                 throw new ResourceNotFoundException(

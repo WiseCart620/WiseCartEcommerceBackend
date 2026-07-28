@@ -20,9 +20,11 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         SELECT r FROM JntShippingRate r
         WHERE r.active = true
         AND UPPER(r.originProvince) = UPPER(:originProvince)
-        AND UPPER(r.originCity) = UPPER(:originCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
-        AND UPPER(r.destinationCity) = UPPER(:destinationCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND r.minWeightKg <= :weight
         AND (r.maxWeightKg IS NULL OR r.maxWeightKg >= :weight)
         ORDER BY r.minWeightKg DESC
@@ -38,9 +40,11 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         SELECT r FROM JntShippingRate r
         WHERE r.active = true
         AND UPPER(r.originProvince) = UPPER(:originProvince)
-        AND UPPER(r.originCity) = UPPER(:originCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
-        AND UPPER(r.destinationCity) = UPPER(:destinationCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationBarangay) = UPPER(:barangay)
         AND r.minWeightKg <= :weight
         AND (r.maxWeightKg IS NULL OR r.maxWeightKg >= :weight)
@@ -58,9 +62,11 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         SELECT r FROM JntShippingRate r
         WHERE r.active = true
         AND UPPER(r.originProvince) = UPPER(:originProvince)
-        AND UPPER(r.originCity) = UPPER(:originCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
-        AND UPPER(r.destinationCity) = UPPER(:destinationCity)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         ORDER BY r.minWeightKg DESC
         """)
     List<JntShippingRate> findAllForRoute(
