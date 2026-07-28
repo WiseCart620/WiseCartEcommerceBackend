@@ -54,6 +54,11 @@ public class EmailService {
     @Value("${app.frontend.url:http://localhost:3000}")
     private String frontendUrl;
 
+    @Value("${app.backend.url:https://backend.wisecart.ph}")
+    private String backendUrl;
+
+
+
     @Async
     public void sendVerificationEmail(User user) {
         try {
@@ -90,56 +95,74 @@ public class EmailService {
         }
     }
 
-    @Async
     public void sendOrderConfirmationEmail(Order order) {
-        try {
-            if (order == null) {
-                log.error("Cannot send order confirmation email: order is null");
-                return;
-            }
-            String recipientEmail = getRecipientEmail(order);
-            if (recipientEmail == null) {
-                log.error("Cannot send order confirmation email: no email found for order {}", order.getOrderNumber());
-                return;
-            }
-            OrderResponse orderResponse = orderMapper.toResponse(order);
-            Context context = new Context(Locale.getDefault());
-            context.setVariable("order", orderResponse);
-            context.setVariable("user", order.getUser());
-            context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
-            context.setVariable("imageBaseUrl", "https://unrevertible-senaida-continentally.ngrok-free.dev");
-            String content = templateEngine.process("email/order-confirmation", context);
-            sendEmail(recipientEmail, "Order Confirmation - #" + order.getOrderNumber(), content);
-            log.info("Order confirmation email sent for order: {} to: {}", order.getOrderNumber(), recipientEmail);
-        } catch (Exception e) {
-            log.error("Failed to send order confirmation email for order: {}",
-                    order != null ? order.getOrderNumber() : "unknown", e);
+        if (order == null) {
+            log.error("Cannot send order confirmation email: order is null");
+            return;
         }
+        String recipientEmail = getRecipientEmail(order);
+        if (recipientEmail == null) {
+            log.error("Cannot send order confirmation email: no email found for order {}", order.getOrderNumber());
+            return;
+        }
+        OrderResponse orderResponse = orderMapper.toResponse(order);
+        String orderNumber = order.getOrderNumber();
+        String userFirstName = order.getUser() != null ? order.getUser().getFirstName() : null;
+
+        dispatchOrderConfirmationEmail(orderResponse, recipientEmail, orderNumber, userFirstName);
     }
 
     @Async
-    public void sendOrderStatusUpdateEmail(Order order) {
+    public void dispatchOrderConfirmationEmail(OrderResponse orderResponse, String recipientEmail,
+            String orderNumber, String userFirstName) {
         try {
-            if (order == null) {
-                log.error("Cannot send order status update email: order is null");
-                return;
-            }
-            String recipientEmail = getRecipientEmail(order);
-            if (recipientEmail == null) {
-                log.error("Cannot send order status update email: no email found for order {}", order.getOrderNumber());
-                return;
-            }
-            OrderResponse orderResponse = orderMapper.toResponse(order);
             Context context = new Context(Locale.getDefault());
             context.setVariable("order", orderResponse);
-            context.setVariable("user", order.getUser());
-            context.setVariable("orderUrl", frontendUrl + "/orders/" + order.getOrderNumber());
-            String content = templateEngine.process("email/order-status-update", context);
-            sendEmail(recipientEmail, "Order Status Update - #" + order.getOrderNumber(), content);
-            log.info("Order status update email sent for order: {} to: {}", order.getOrderNumber(), recipientEmail);
+            context.setVariable("userFirstName", userFirstName);
+            context.setVariable("orderUrl", frontendUrl + "/orders/" + orderNumber);
+            context.setVariable("imageBaseUrl", backendUrl);
+            String content = templateEngine.process("email/order-confirmation", context);
+            sendEmail(recipientEmail, "Order Confirmation - #" + orderNumber, content);
+            log.info("Order confirmation email sent for order: {} to: {}", orderNumber, recipientEmail);
         } catch (Exception e) {
-            log.error("Failed to send order status update email for order: {}",
-                    order != null ? order.getOrderNumber() : "unknown", e);
+            log.error("Failed to send order confirmation email for order: {}", orderNumber, e);
+        }
+    }
+
+    public void sendOrderStatusUpdateEmail(Order order) {
+        if (order == null) {
+            log.error("Cannot send order status update email: order is null");
+            return;
+        }
+        String recipientEmail = getRecipientEmail(order);
+        if (recipientEmail == null) {
+            log.error("Cannot send order status update email: no email found for order {}", order.getOrderNumber());
+            return;
+        }
+        // Fully materialize everything the template needs while the session
+        // is still safely single-threaded.
+        OrderResponse orderResponse = orderMapper.toResponse(order);
+        String orderNumber = order.getOrderNumber();
+        String userFirstName = order.getUser() != null ? order.getUser().getFirstName() : null;
+
+        dispatchOrderStatusUpdateEmail(orderResponse, recipientEmail, orderNumber, userFirstName);
+    }
+
+    // Async dispatch — receives only plain data, nothing Hibernate-managed,
+    // so it can safely run on a background thread without touching the session.
+    @Async
+    public void dispatchOrderStatusUpdateEmail(OrderResponse orderResponse, String recipientEmail,
+            String orderNumber, String userFirstName) {
+        try {
+            Context context = new Context(Locale.getDefault());
+            context.setVariable("order", orderResponse);
+            context.setVariable("userFirstName", userFirstName);
+            context.setVariable("orderUrl", frontendUrl + "/orders/" + orderNumber);
+            String content = templateEngine.process("email/order-status-update", context);
+            sendEmail(recipientEmail, "Order Status Update - #" + orderNumber, content);
+            log.info("Order status update email sent for order: {} to: {}", orderNumber, recipientEmail);
+        } catch (Exception e) {
+            log.error("Failed to send order status update email for order: {}", orderNumber, e);
         }
     }
 
@@ -206,8 +229,12 @@ public class EmailService {
         if (to == null || to.trim().isEmpty()) {
             throw new MessagingException("Recipient email address is null or empty");
         }
-        if (subject == null) subject = "";
-        if (content == null) content = "";
+        if (subject == null) {
+            subject = "";
+        }
+        if (content == null) {
+            content = "";
+        }
 
         try {
             sendViaResend(to, subject, content);
