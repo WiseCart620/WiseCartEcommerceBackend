@@ -43,6 +43,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final EmailService emailService;
+    private final com.wisecartecommerce.ecommerce.util.UserMapper userMapper;
 
     @Override
     @Transactional
@@ -221,7 +222,7 @@ public class AuthServiceImpl implements AuthService {
                     .orElseThrow(() -> new CustomException("User not found: " + email));
         } else {
             throw new CustomException("Invalid authentication principal type: "
-                + principal.getClass().getName());
+                    + principal.getClass().getName());
         }
 
         return mapToUserResponse(user);
@@ -233,7 +234,7 @@ public class AuthServiceImpl implements AuthService {
         if (!rateLimitService.tryConsume(
                 rateLimitService.forgotPasswordBucket(getClientIp(httpRequest)))) {
             throw new RateLimitException(
-                "Too many password reset requests. Please wait before trying again.");
+                    "Too many password reset requests. Please wait before trying again.");
         }
 
         User user = userRepository.findByEmail(email)
@@ -293,17 +294,6 @@ public class AuthServiceImpl implements AuthService {
     }
 
     private UserResponse mapToUserResponse(User user) {
-        return UserResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .phone(user.getPhone())
-                .role(user.getRole())
-                .avatarUrl(user.getAvatarUrl())
-                .emailVerified(user.isEmailVerified())
-                .enabled(user.isEnabled())
-                .createdAt(user.getCreatedAt())
-                .build();
+        return userMapper.toUserResponse(user);
     }
 }

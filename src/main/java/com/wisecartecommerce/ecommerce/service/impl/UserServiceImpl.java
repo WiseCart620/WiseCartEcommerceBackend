@@ -50,6 +50,7 @@ public class UserServiceImpl implements UserService {
     private final PendingCheckoutRepository pendingCheckoutRepository;
     private final FirebaseAdminService firebaseAdminService;
     private final CouponUsageRepository couponUsageRepository;
+    private final com.wisecartecommerce.ecommerce.util.UserMapper userMapper;
 
     private User getCurrentUser() {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
@@ -522,20 +523,7 @@ public class UserServiceImpl implements UserService {
     }
 
     private UserResponse mapToUserResponse(User user) {
-        return UserResponse.builder()
-                .id(user.getId())
-                .email(user.getEmail())
-                .firstName(user.getFirstName())
-                .lastName(user.getLastName())
-                .phone(user.getPhone())
-                .role(user.getRole())
-                .avatarUrl(user.getAvatarUrl())
-                .emailVerified(user.isEmailVerified())
-                .enabled(user.isEnabled())
-                .googleAccount(user.getFirebaseUid() != null)
-                .createdAt(user.getCreatedAt())
-                .updatedAt(user.getUpdatedAt())
-                .build();
+        return userMapper.toUserResponse(user);
     }
 
     private AddressResponse mapAddressToResponse(Address address) {
