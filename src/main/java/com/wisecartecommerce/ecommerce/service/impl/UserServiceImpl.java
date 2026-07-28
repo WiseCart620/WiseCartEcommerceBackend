@@ -67,7 +67,12 @@ public class UserServiceImpl implements UserService {
     public UserResponse updateProfile(UpdateProfileRequest request) {
         User user = getCurrentUser();
 
+        boolean isGoogleAccount = user.getFirebaseUid() != null;
+
         if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
+            if (isGoogleAccount) {
+                throw new CustomException("Email is managed by your Google account and cannot be changed here");
+            }
             if (userRepository.existsByEmail(request.getEmail())) {
                 throw new CustomException("Email already registered");
             }
@@ -512,7 +517,6 @@ public class UserServiceImpl implements UserService {
         log.info("Password reset for user: {}", user.getEmail());
     }
 
-    // ─── Mappers ─────────────────────────────────────────────────────────────
     private UserResponse mapToUserResponse(User user) {
         return UserResponse.builder()
                 .id(user.getId())
@@ -524,6 +528,7 @@ public class UserServiceImpl implements UserService {
                 .avatarUrl(user.getAvatarUrl())
                 .emailVerified(user.isEmailVerified())
                 .enabled(user.isEnabled())
+                .googleAccount(user.getFirebaseUid() != null)
                 .createdAt(user.getCreatedAt())
                 .updatedAt(user.getUpdatedAt())
                 .build();

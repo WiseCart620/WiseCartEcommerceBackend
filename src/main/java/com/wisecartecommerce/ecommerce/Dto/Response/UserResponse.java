@@ -1,5 +1,8 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
+import java.time.LocalDateTime;
+import java.util.Map;
+
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.wisecartecommerce.ecommerce.util.Role;
 
@@ -7,9 +10,6 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.time.LocalDateTime;
-import java.util.Map;
 
 @Data
 @Builder
@@ -29,4 +29,5 @@ public class UserResponse {
     private Map<String, Object> stats;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private boolean googleAccount;
 }
