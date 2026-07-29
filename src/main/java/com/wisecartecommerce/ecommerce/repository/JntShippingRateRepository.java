@@ -1,7 +1,7 @@
 package com.wisecartecommerce.ecommerce.repository;
 
-import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -25,16 +25,15 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
-        AND r.minWeightKg <= :weight
-        AND (r.maxWeightKg IS NULL OR r.maxWeightKg >= :weight)
-        ORDER BY r.minWeightKg DESC
+        AND r.destinationBarangay IS NULL
+        AND r.bagSize = :bagSize
         """)
-    List<JntShippingRate> findMatchingRates(
+    Optional<JntShippingRate> findByRouteAndBagSize(
             @Param("originProvince") String originProvince,
             @Param("originCity") String originCity,
             @Param("destinationProvince") String destinationProvince,
             @Param("destinationCity") String destinationCity,
-            @Param("weight") BigDecimal weight);
+            @Param("bagSize") String bagSize);
 
     @Query("""
         SELECT r FROM JntShippingRate r
@@ -46,34 +45,54 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationBarangay) = UPPER(:barangay)
-        AND r.minWeightKg <= :weight
-        AND (r.maxWeightKg IS NULL OR r.maxWeightKg >= :weight)
-        ORDER BY r.minWeightKg DESC
+        AND r.bagSize = :bagSize
         """)
-    List<JntShippingRate> findMatchingRatesWithBarangay(
+    Optional<JntShippingRate> findByRouteAndBagSizeWithBarangay(
             @Param("originProvince") String originProvince,
             @Param("originCity") String originCity,
             @Param("destinationProvince") String destinationProvince,
             @Param("destinationCity") String destinationCity,
             @Param("barangay") String barangay,
-            @Param("weight") BigDecimal weight);
+            @Param("bagSize") String bagSize);
 
     @Query("""
         SELECT r FROM JntShippingRate r
-        WHERE r.active = true
-        AND UPPER(r.originProvince) = UPPER(:originProvince)
+        WHERE UPPER(r.originProvince) = UPPER(:originProvince)
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
-        ORDER BY r.minWeightKg DESC
+        AND ((:barangay IS NULL AND r.destinationBarangay IS NULL) OR UPPER(r.destinationBarangay) = UPPER(:barangay))
+        AND r.bagSize = :bagSize
         """)
-    List<JntShippingRate> findAllForRoute(
+    Optional<JntShippingRate> findExactRoute(
             @Param("originProvince") String originProvince,
             @Param("originCity") String originCity,
             @Param("destinationProvince") String destinationProvince,
-            @Param("destinationCity") String destinationCity);
+            @Param("destinationCity") String destinationCity,
+            @Param("barangay") String barangay,
+            @Param("bagSize") String bagSize);
+
+    @Query("""
+        SELECT r FROM JntShippingRate r
+        WHERE UPPER(r.originProvince) = UPPER(:originProvince)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+        AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+        AND ((:barangay IS NULL AND r.destinationBarangay IS NULL) OR UPPER(r.destinationBarangay) = UPPER(:barangay))
+        """)
+    List<JntShippingRate> findAllBagRatesForRoute(
+            @Param("originProvince") String originProvince,
+            @Param("originCity") String originCity,
+            @Param("destinationProvince") String destinationProvince,
+            @Param("destinationCity") String destinationCity,
+            @Param("barangay") String barangay);
+
+    @Query("SELECT r FROM JntShippingRate r ORDER BY r.destinationProvince, r.destinationCity, r.destinationBarangay, r.bagSize")
+    List<JntShippingRate> findAllForGrouping();
 
     @Query("SELECT DISTINCT r.originProvince FROM JntShippingRate r ORDER BY r.originProvince")
     List<String> findDistinctOriginProvinces();

@@ -3,13 +3,13 @@ package com.wisecartecommerce.ecommerce.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest;
-import com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse;
 import com.wisecartecommerce.ecommerce.entity.JntShippingRate;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
@@ -23,12 +23,82 @@ public class JntShippingService {
 
     private final JntShippingRateRepository rateRepository;
 
-    public Page<JntShippingRate> getAllRates(String search, Pageable pageable) {
-        if (search == null || search.isBlank()) {
-            return rateRepository.findAll(pageable);
+    public Page<com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary> getGroupedRoutes(String search, Pageable pageable) {
+        List<JntShippingRate> all = rateRepository.findAllForGrouping();
+
+        java.util.Map<String, List<JntShippingRate>> grouped = all.stream()
+                .collect(Collectors.groupingBy(this::routeKey, java.util.LinkedHashMap::new, Collectors.toList()));
+
+        List<com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary> summaries = grouped.values().stream()
+                .map(this::toSummary)
+                .filter(s -> search == null || search.isBlank()
+                || s.getDestinationProvince().toLowerCase().contains(search.toLowerCase())
+                || s.getDestinationCity().toLowerCase().contains(search.toLowerCase()))
+                .collect(Collectors.toList());
+
+        int start = (int) pageable.getOffset();
+        int end = Math.min(start + pageable.getPageSize(), summaries.size());
+        List<com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary> pageContent
+                = start >= summaries.size() ? List.of() : summaries.subList(start, end);
+        return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, summaries.size());
+    }
+
+    private String routeKey(JntShippingRate r) {
+        return r.getOriginProvince() + "|" + r.getOriginCity() + "|"
+                + r.getDestinationProvince() + "|" + r.getDestinationCity() + "|"
+                + (r.getDestinationBarangay() == null ? "" : r.getDestinationBarangay());
+    }
+
+    private com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary toSummary(List<JntShippingRate> rows) {
+        JntShippingRate any = rows.get(0);
+        com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary s
+                = new com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary();
+        s.setOriginProvince(any.getOriginProvince());
+        s.setOriginCity(any.getOriginCity());
+        s.setDestinationProvince(any.getDestinationProvince());
+        s.setDestinationCity(any.getDestinationCity());
+        s.setDestinationBarangay(any.getDestinationBarangay());
+        s.setServiceType(any.getServiceType());
+        s.setOverweightAdditionalFee(any.getOverweightAdditionalFee());
+        s.setActive(rows.stream().allMatch(JntShippingRate::getActive));
+        for (JntShippingRate r : rows) {
+            if (SMALL.equals(r.getBagSize())) {
+                s.setSmallId(r.getId());
+                s.setSmallFee(r.getShippingFee());
+                s.setSmallItemFee(r.getItemAdditionalFee());
+            } else if (MEDIUM.equals(r.getBagSize())) {
+                s.setMediumId(r.getId());
+                s.setMediumFee(r.getShippingFee());
+                s.setMediumItemFee(r.getItemAdditionalFee());
+            } else if (BIG.equals(r.getBagSize())) {
+                s.setBigId(r.getId());
+                s.setBigFee(r.getShippingFee());
+                s.setBigItemFee(r.getItemAdditionalFee());
+            }
         }
-        return rateRepository.findByDestinationProvinceContainingIgnoreCaseOrDestinationCityContainingIgnoreCase(
-                search, search, pageable);
+        return s;
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void toggleRouteActive(Long smallId, Long mediumId, Long bigId, boolean active) {
+        for (Long id : new Long[]{smallId, mediumId, bigId}) {
+            if (id == null) {
+                continue;
+            }
+            JntShippingRate r = getRateById(id);
+            r.setActive(active);
+            rateRepository.save(r);
+        }
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteRoute(Long smallId, Long mediumId, Long bigId) {
+        for (Long id : new Long[]{smallId, mediumId, bigId}) {
+            if (id == null) {
+                continue;
+            }
+            rateRepository.deleteById(id);
+        }
     }
 
     public JntShippingRate getRateById(Long id) {
@@ -36,45 +106,133 @@ public class JntShippingService {
                 .orElseThrow(() -> new ResourceNotFoundException("J&T shipping rate not found: " + id));
     }
 
-    public JntShippingRate createRate(JntShippingRateRequest req) {
+    @org.springframework.transaction.annotation.Transactional
+    public JntShippingRate createRate(com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest req) {
         JntShippingRate rate = new JntShippingRate();
-        applyRequest(rate, req);
+        applyRequestToEntity(rate, req);
         return rateRepository.save(rate);
     }
 
-    public JntShippingRate updateRate(Long id, JntShippingRateRequest req) {
+    @org.springframework.transaction.annotation.Transactional
+    public JntShippingRate updateRate(Long id, com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest req) {
         JntShippingRate rate = getRateById(id);
-        applyRequest(rate, req);
+        applyRequestToEntity(rate, req);
         return rateRepository.save(rate);
     }
 
-    public void deleteRate(Long id) {
-        rateRepository.delete(getRateById(id));
+    private void applyRequestToEntity(JntShippingRate rate, com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest req) {
+        rate.setOriginProvince(norm(req.getOriginProvince()));
+        rate.setOriginCity(norm(req.getOriginCity()));
+        rate.setDestinationProvince(norm(req.getDestinationProvince()));
+        rate.setDestinationCity(norm(req.getDestinationCity()));
+        rate.setDestinationBarangay(req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
+                ? norm(req.getDestinationBarangay()) : null);
+        rate.setServiceType(req.getServiceType() != null ? req.getServiceType() : "EZ");
+        rate.setBagSize(validateBagSize(req.getBagSize()));
+        rate.setShippingFee(req.getShippingFee() != null ? req.getShippingFee() : BigDecimal.ZERO);
+        rate.setItemAdditionalFee(req.getItemAdditionalFee() != null ? req.getItemAdditionalFee() : BigDecimal.ZERO);
+        rate.setOverweightAdditionalFee(BigDecimal.ZERO);
+        rate.setActive(req.getActive() != null ? req.getActive() : true);
     }
 
+    private String validateBagSize(String bagSize) {
+        if (SMALL.equals(bagSize) || MEDIUM.equals(bagSize) || BIG.equals(bagSize)) {
+            return bagSize;
+        }
+        throw new com.wisecartecommerce.ecommerce.exception.CustomException(
+                "Invalid bagSize. Must be one of: " + SMALL + ", " + MEDIUM + ", " + BIG);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
     public void toggleActive(Long id, boolean active) {
         JntShippingRate rate = getRateById(id);
         rate.setActive(active);
         rateRepository.save(rate);
     }
 
-    private void applyRequest(JntShippingRate rate, JntShippingRateRequest req) {
-        rate.setOriginProvince(req.getOriginProvince().trim().toUpperCase());
-        rate.setOriginCity(req.getOriginCity().trim().toUpperCase());
-        rate.setDestinationProvince(req.getDestinationProvince().trim().toUpperCase());
-        rate.setDestinationCity(req.getDestinationCity().trim().toUpperCase());
-        rate.setDestinationBarangay(
-                req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
-                ? req.getDestinationBarangay().trim().toUpperCase()
-                : null);
-        rate.setServiceType(req.getServiceType());
-        rate.setBagSize(req.getBagSize());
-        rate.setMinWeightKg(req.getMinWeightKg());
-        rate.setMaxWeightKg(req.getMaxWeightKg());
-        rate.setShippingFee(req.getShippingFee());
-        rate.setItemAdditionalFee(req.getItemAdditionalFee() != null ? req.getItemAdditionalFee() : BigDecimal.ZERO);
-        rate.setAdditionalFeePerKgOverMax(req.getAdditionalFeePerKgOverMax() != null ? req.getAdditionalFeePerKgOverMax() : BigDecimal.ZERO);
+    @org.springframework.transaction.annotation.Transactional
+    public void deleteRate(Long id) {
+        if (!rateRepository.existsById(id)) {
+            throw new ResourceNotFoundException("J&T shipping rate not found: " + id);
+        }
+        rateRepository.deleteById(id);
+    }
+
+    private static final BigDecimal MAX_JNT_WEIGHT_KG = new BigDecimal("50");
+    private static final String SMALL = "Small (<=3KG)";
+    private static final String MEDIUM = "Medium (<=5KG)";
+    private static final String BIG = "Big (<=8KG)";
+
+    private String norm(String s) {
+        return s == null ? null : s.trim().toUpperCase();
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public void saveRouteRates(com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req) {
+        BigDecimal overweightFee = req.getOverweightAdditionalFee() != null ? req.getOverweightAdditionalFee() : BigDecimal.ZERO;
+        upsertBagRate(req, SMALL, req.getSmallFee(), req.getSmallItemFee(), overweightFee);
+        upsertBagRate(req, MEDIUM, req.getMediumFee(), req.getMediumItemFee(), overweightFee);
+        upsertBagRate(req, BIG, req.getBigFee(), req.getBigItemFee(), overweightFee);
+    }
+
+    private void upsertBagRate(com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req,
+            String bagSize, BigDecimal fee, BigDecimal itemFee, BigDecimal overweightFee) {
+        String op = norm(req.getOriginProvince()), oc = norm(req.getOriginCity());
+        String dp = norm(req.getDestinationProvince()), dc = norm(req.getDestinationCity());
+        String db = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
+                ? norm(req.getDestinationBarangay()) : null;
+
+        JntShippingRate rate = rateRepository
+                .findExactRoute(op, oc, dp, dc, db, bagSize)
+                .orElseGet(JntShippingRate::new);
+
+        rate.setOriginProvince(op);
+        rate.setOriginCity(oc);
+        rate.setDestinationProvince(dp);
+        rate.setDestinationCity(dc);
+        rate.setDestinationBarangay(db);
+        rate.setServiceType(req.getServiceType() != null ? req.getServiceType() : "EZ");
+        rate.setBagSize(bagSize);
+        rate.setShippingFee(fee != null ? fee : BigDecimal.ZERO);
+        rate.setItemAdditionalFee(itemFee != null ? itemFee : BigDecimal.ZERO);
+        rate.setOverweightAdditionalFee(overweightFee);
         rate.setActive(req.getActive() != null ? req.getActive() : true);
+        rateRepository.save(rate);
+    }
+
+    public List<JntShippingRate> getRouteRates(String originProvince, String originCity,
+            String destinationProvince, String destinationCity, String destinationBarangay) {
+        String db = destinationBarangay != null && !destinationBarangay.isBlank() ? norm(destinationBarangay) : null;
+        return rateRepository.findAllBagRatesForRoute(
+                norm(originProvince), norm(originCity), norm(destinationProvince), norm(destinationCity), db);
+    }
+
+    private String resolveBagSize(BigDecimal weightKg) {
+        if (weightKg.compareTo(new BigDecimal("3")) <= 0) {
+            return SMALL;
+        }
+        if (weightKg.compareTo(new BigDecimal("5")) <= 0) {
+            return MEDIUM;
+        }
+        return BIG;
+    }
+
+    private BigDecimal calculateOverweightFee(BigDecimal weightKg, BigDecimal routeSurcharge) {
+        if (weightKg.compareTo(MAX_JNT_WEIGHT_KG) > 0) {
+            throw new com.wisecartecommerce.ecommerce.exception.CustomException(
+                    "Package weight (" + weightKg + "kg) exceeds J&T Express's 50kg maximum.");
+        }
+        int ceilKg = weightKg.setScale(0, RoundingMode.CEILING).intValueExact();
+        BigDecimal base = BigDecimal.valueOf(70L * ceilKg + 15L);
+        BigDecimal surcharge = routeSurcharge != null ? routeSurcharge : BigDecimal.ZERO;
+        return base.add(surcharge).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal findRouteSurcharge(String op, String oc, String dp, String dc, String barangay) {
+        java.util.Optional<JntShippingRate> anyRow = barangay != null
+                ? rateRepository.findByRouteAndBagSizeWithBarangay(op, oc, dp, dc, barangay, BIG)
+                : rateRepository.findByRouteAndBagSize(op, oc, dp, dc, BIG);
+        return anyRow.map(JntShippingRate::getOverweightAdditionalFee).orElse(BigDecimal.ZERO);
     }
 
     public List<String> getOriginProvinces() {
@@ -95,51 +253,31 @@ public class JntShippingService {
 
     public JntEstimateResponse estimate(JntEstimateRequest req) {
         BigDecimal weight = req.getWeightKg() != null ? req.getWeightKg() : BigDecimal.ONE;
-        String originProvince = req.getOriginProvince() != null ? req.getOriginProvince().trim().toUpperCase() : null;
-        String originCity = req.getOriginCity() != null ? req.getOriginCity().trim().toUpperCase() : null;
-        String destProvince = req.getDestinationProvince() != null ? req.getDestinationProvince().trim().toUpperCase() : null;
-        String destCity = req.getDestinationCity() != null ? req.getDestinationCity().trim().toUpperCase() : null;
+        String originProvince = norm(req.getOriginProvince());
+        String originCity = norm(req.getOriginCity());
+        String destProvince = norm(req.getDestinationProvince());
+        String destCity = norm(req.getDestinationCity());
         String barangay = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
-                ? req.getDestinationBarangay().trim().toUpperCase()
-                : null;
+                ? norm(req.getDestinationBarangay()) : null;
 
-        List<JntShippingRate> matches = barangay != null
-                ? rateRepository.findMatchingRatesWithBarangay(
-                        originProvince, originCity,
-                        destProvince, destCity, barangay, weight)
-                : List.of();
-
-        if (matches.isEmpty()) {
-            matches = rateRepository.findMatchingRates(
-                    originProvince, originCity,
-                    destProvince, destCity, weight);
+        // ── Over 8kg: formula + route-specific surcharge, ignore bag-size table ──
+        if (weight.compareTo(new BigDecimal("8")) > 0) {
+            BigDecimal surcharge = findRouteSurcharge(originProvince, originCity, destProvince, destCity, barangay);
+            BigDecimal total = calculateOverweightFee(weight, surcharge);
+            return new JntEstimateResponse(originProvince, originCity, destProvince, destCity, barangay,
+                    "EZ", "Auto-calculated (>8KG)", weight, total, BigDecimal.ZERO, total);
         }
 
-        JntShippingRate rate;
-        BigDecimal extraFee = BigDecimal.ZERO;
+        // ── 8kg and under: bag-spec rate lookup ──
+        String bagSize = resolveBagSize(weight);
+        JntShippingRate rate = (barangay != null
+                ? rateRepository.findByRouteAndBagSizeWithBarangay(originProvince, originCity, destProvince, destCity, barangay, bagSize)
+                : java.util.Optional.<JntShippingRate>empty())
+                .or(() -> rateRepository.findByRouteAndBagSize(originProvince, originCity, destProvince, destCity, bagSize))
+                .orElseThrow(() -> new ResourceNotFoundException(
+                "No J&T rate configured for " + bagSize + " on this route yet."));
 
-        if (!matches.isEmpty()) {
-            rate = matches.get(0);
-        } else {
-            List<JntShippingRate> allForRoute = rateRepository.findAllForRoute(
-                    originProvince, originCity,
-                    destProvince, destCity);
-
-            if (allForRoute.isEmpty()) {
-                throw new ResourceNotFoundException(
-                        "No J&T shipping rate configured for this route yet.");
-            }
-
-            rate = allForRoute.get(0); // highest bracket for this route
-            if (rate.getMaxWeightKg() != null && weight.compareTo(rate.getMaxWeightKg()) > 0) {
-                BigDecimal overageKg = weight.subtract(rate.getMaxWeightKg());
-                extraFee = overageKg.multiply(
-                        rate.getAdditionalFeePerKgOverMax() != null ? rate.getAdditionalFeePerKgOverMax() : BigDecimal.ZERO
-                ).setScale(2, RoundingMode.HALF_UP);
-            }
-        }
-
-        BigDecimal shippingFee = rate.getShippingFee().add(extraFee).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal shippingFee = rate.getShippingFee().setScale(2, RoundingMode.HALF_UP);
         BigDecimal itemFee = rate.getItemAdditionalFee() != null ? rate.getItemAdditionalFee() : BigDecimal.ZERO;
         BigDecimal total = shippingFee.add(itemFee).setScale(2, RoundingMode.HALF_UP);
 

@@ -622,6 +622,10 @@ public class OrderServiceImpl implements OrderService {
         } else if (taxableSubtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             shippingAmount = BigDecimal.ZERO;
         } else if ("jnt".equalsIgnoreCase(request.getShippingCarrier())) {
+            AppSettings gs = appSettingsRepository.findAll().stream().findFirst().orElse(null);
+            if (gs != null && !gs.isJntEnabled()) {
+                throw new CustomException("J&T Express is currently unavailable. Please choose another shipping method.");
+            }
             try {
                 BigDecimal weightKg = BigDecimal.valueOf(
                         Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS))
@@ -782,6 +786,20 @@ public class OrderServiceImpl implements OrderService {
         if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             log.info("Free shipping applied (subtotal ₱{})", subtotal);
             return BigDecimal.ZERO;
+        }
+
+        AppSettings carrierSettings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
+        boolean jntOn = carrierSettings == null || carrierSettings.isJntEnabled();
+        boolean flashOn = carrierSettings == null || carrierSettings.isFlashEnabled();
+
+        if ("jnt".equalsIgnoreCase(shippingCarrier)) {
+            if (!jntOn) {
+                throw new CustomException("J&T Express is currently unavailable. Please choose another shipping method.");
+            }
+            return resolveJntShippingFee(destination, cartItems);
+        }
+        if (!flashOn) {
+            throw new CustomException("Flash Express is currently unavailable. Please choose another shipping method.");
         }
 
         if ("jnt".equalsIgnoreCase(shippingCarrier)) {

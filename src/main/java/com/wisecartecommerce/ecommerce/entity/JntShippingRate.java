@@ -11,11 +11,17 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "jnt_shipping_rates")
 @Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class JntShippingRate {
 
     @Id
@@ -38,27 +44,24 @@ public class JntShippingRate {
     private String destinationBarangay;
 
     @Column(nullable = false)
-    private String serviceType; // e.g. "EZ", "Standard"
+    private String serviceType;
 
     @Column(nullable = false)
-    private String bagSize; // e.g. "Small (<=3KG)", "Medium (<=10KG)", "Large"
-
-    @Column(nullable = false, precision = 10, scale = 2)
-    private BigDecimal minWeightKg;
-
-    @Column(precision = 10, scale = 2)
-    private BigDecimal maxWeightKg; // null = top/open-ended bracket for this route
+    private String bagSize;
 
     @Column(nullable = false, precision = 10, scale = 2)
     private BigDecimal shippingFee;
 
     @Column(precision = 10, scale = 2)
+    @Builder.Default
     private BigDecimal itemAdditionalFee = BigDecimal.ZERO;
 
-    @Column(precision = 10, scale = 2)
-    private BigDecimal additionalFeePerKgOverMax = BigDecimal.ZERO; // used past this bracket's max
+    @Column(name = "overweight_additional_fee", precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal overweightAdditionalFee = BigDecimal.ZERO;
 
     @Column(nullable = false)
+    @Builder.Default
     private Boolean active = true;
 
     @Column(updatable = false)
@@ -76,5 +79,4 @@ public class JntShippingRate {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
-
 }

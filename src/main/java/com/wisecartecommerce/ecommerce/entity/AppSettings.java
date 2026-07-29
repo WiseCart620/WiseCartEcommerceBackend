@@ -1,9 +1,20 @@
 package com.wisecartecommerce.ecommerce.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Entity
 @Table(name = "app_settings")
@@ -48,6 +59,14 @@ public class AppSettings {
 
     @Column(name = "jnt_origin_city")
     private String jntOriginCity;
+
+    @Column(name = "flash_enabled", nullable = false)
+    @Builder.Default
+    private boolean flashEnabled = true;
+
+    @Column(name = "jnt_enabled", nullable = false)
+    @Builder.Default
+    private boolean jntEnabled = true;
 
     @PrePersist
     @PreUpdate

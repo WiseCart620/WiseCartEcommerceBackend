@@ -1,25 +1,35 @@
 package com.wisecartecommerce.ecommerce.controller.admin;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Request.JntShippingRateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse;
 import com.wisecartecommerce.ecommerce.entity.JntShippingRate;
 import com.wisecartecommerce.ecommerce.service.JntShippingService;
+
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/admin/jnt-shipping")
@@ -32,13 +42,31 @@ public class AdminJntShippingController {
     private final JntShippingService jntShippingService;
 
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<JntShippingRate>>> getAllRates(
+    public ResponseEntity<ApiResponse<Page<com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary>>> getAllRates(
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        Pageable pageable = PageRequest.of(page, size,
-                Sort.by("destinationProvince").ascending().and(Sort.by("minWeightKg").ascending()));
-        return ResponseEntity.ok(ApiResponse.success("Rates retrieved", jntShippingService.getAllRates(search, pageable)));
+        Pageable pageable = PageRequest.of(page, size);
+        return ResponseEntity.ok(ApiResponse.success("Rates retrieved", jntShippingService.getGroupedRoutes(search, pageable)));
+    }
+
+    @PatchMapping("/route/toggle-active")
+    public ResponseEntity<ApiResponse<Void>> toggleRouteActive(@RequestBody Map<String, Object> body) {
+        Long smallId = body.get("smallId") != null ? Long.valueOf(body.get("smallId").toString()) : null;
+        Long mediumId = body.get("mediumId") != null ? Long.valueOf(body.get("mediumId").toString()) : null;
+        Long bigId = body.get("bigId") != null ? Long.valueOf(body.get("bigId").toString()) : null;
+        boolean active = Boolean.TRUE.equals(body.get("active"));
+        jntShippingService.toggleRouteActive(smallId, mediumId, bigId, active);
+        return ResponseEntity.ok(ApiResponse.success("Route status updated", null));
+    }
+
+    @DeleteMapping("/route")
+    public ResponseEntity<ApiResponse<Void>> deleteRoute(
+            @RequestParam(required = false) Long smallId,
+            @RequestParam(required = false) Long mediumId,
+            @RequestParam(required = false) Long bigId) {
+        jntShippingService.deleteRoute(smallId, mediumId, bigId);
+        return ResponseEntity.ok(ApiResponse.success("Route deleted", null));
     }
 
     @GetMapping("/{id}")
@@ -72,6 +100,24 @@ public class AdminJntShippingController {
     @Operation(summary = "Preview a shipping fee using currently configured rates")
     public ResponseEntity<ApiResponse<JntEstimateResponse>> testEstimate(@RequestBody JntEstimateRequest req) {
         return ResponseEntity.ok(ApiResponse.success("Estimate calculated", jntShippingService.estimate(req)));
+    }
+
+    @PostMapping("/route")
+    @Operation(summary = "Save Small/Medium/Big bag fees + overweight surcharge for a route")
+    public ResponseEntity<ApiResponse<Void>> saveRouteRates(
+            @RequestBody com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req) {
+        jntShippingService.saveRouteRates(req);
+        return ResponseEntity.ok(ApiResponse.success("Route rates saved", null));
+    }
+
+    @GetMapping("/route")
+    @Operation(summary = "Get the Small/Medium/Big bag rows for a route")
+    public ResponseEntity<ApiResponse<List<JntShippingRate>>> getRouteRates(
+            @RequestParam String originProvince, @RequestParam String originCity,
+            @RequestParam String destinationProvince, @RequestParam String destinationCity,
+            @RequestParam(required = false) String destinationBarangay) {
+        return ResponseEntity.ok(ApiResponse.success("OK",
+                jntShippingService.getRouteRates(originProvince, originCity, destinationProvince, destinationCity, destinationBarangay)));
     }
 
     @GetMapping("/locations/origin-provinces")
