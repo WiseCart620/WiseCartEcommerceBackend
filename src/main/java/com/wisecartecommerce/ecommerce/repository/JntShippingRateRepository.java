@@ -60,9 +60,9 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         WHERE UPPER(r.originProvince) = UPPER(:originProvince)
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
-        AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
-        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
-            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
+        AND ((:destinationCity IS NULL AND r.destinationCity IS NULL) OR (:destinationCity IS NOT NULL AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))))
         AND ((:barangay IS NULL AND r.destinationBarangay IS NULL) OR UPPER(r.destinationBarangay) = UPPER(:barangay))
         AND r.bagSize = :bagSize
         """)
@@ -80,8 +80,8 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
         AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
             = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
         AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
-        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
-            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+        AND ((:destinationCity IS NULL AND r.destinationCity IS NULL) OR (:destinationCity IS NOT NULL AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:destinationCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))))
         AND ((:barangay IS NULL AND r.destinationBarangay IS NULL) OR UPPER(r.destinationBarangay) = UPPER(:barangay))
         """)
     List<JntShippingRate> findAllBagRatesForRoute(
@@ -90,6 +90,23 @@ public interface JntShippingRateRepository extends JpaRepository<JntShippingRate
             @Param("destinationProvince") String destinationProvince,
             @Param("destinationCity") String destinationCity,
             @Param("barangay") String barangay);
+
+    @Query("""
+        SELECT r FROM JntShippingRate r
+        WHERE r.active = true
+        AND UPPER(r.originProvince) = UPPER(:originProvince)
+        AND UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(r.originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+            = UPPER(TRIM(REPLACE(REPLACE(REPLACE(REPLACE(UPPER(:originCity), 'CITY OF ', ''), ' CITY', ''), '-', ' '), '  ', ' ')))
+        AND UPPER(r.destinationProvince) = UPPER(:destinationProvince)
+        AND r.destinationCity IS NULL
+        AND r.destinationBarangay IS NULL
+        AND r.bagSize = :bagSize
+        """)
+    Optional<JntShippingRate> findByRouteAndBagSizeProvinceWide(
+            @Param("originProvince") String originProvince,
+            @Param("originCity") String originCity,
+            @Param("destinationProvince") String destinationProvince,
+            @Param("bagSize") String bagSize);
 
     @Query("SELECT r FROM JntShippingRate r ORDER BY r.destinationProvince, r.destinationCity, r.destinationBarangay, r.bagSize")
     List<JntShippingRate> findAllForGrouping();

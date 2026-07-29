@@ -33,7 +33,7 @@ public class JntShippingService {
                 .map(this::toSummary)
                 .filter(s -> search == null || search.isBlank()
                 || s.getDestinationProvince().toLowerCase().contains(search.toLowerCase())
-                || s.getDestinationCity().toLowerCase().contains(search.toLowerCase()))
+                || (s.getDestinationCity() != null && s.getDestinationCity().toLowerCase().contains(search.toLowerCase())))
                 .collect(Collectors.toList());
 
         int start = (int) pageable.getOffset();
@@ -124,7 +124,8 @@ public class JntShippingService {
         rate.setOriginProvince(norm(req.getOriginProvince()));
         rate.setOriginCity(norm(req.getOriginCity()));
         rate.setDestinationProvince(norm(req.getDestinationProvince()));
-        rate.setDestinationCity(norm(req.getDestinationCity()));
+        rate.setDestinationCity(req.getDestinationCity() != null && !req.getDestinationCity().isBlank()
+                ? norm(req.getDestinationCity()) : null);
         rate.setDestinationBarangay(req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? norm(req.getDestinationBarangay()) : null);
         rate.setServiceType(req.getServiceType() != null ? req.getServiceType() : "EZ");
@@ -178,7 +179,9 @@ public class JntShippingService {
     private void upsertBagRate(com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req,
             String bagSize, BigDecimal fee, BigDecimal itemFee, BigDecimal overweightFee) {
         String op = norm(req.getOriginProvince()), oc = norm(req.getOriginCity());
-        String dp = norm(req.getDestinationProvince()), dc = norm(req.getDestinationCity());
+        String dp = norm(req.getDestinationProvince());
+        String dc = req.getDestinationCity() != null && !req.getDestinationCity().isBlank()
+                ? norm(req.getDestinationCity()) : null;
         String db = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? norm(req.getDestinationBarangay()) : null;
 
@@ -229,9 +232,13 @@ public class JntShippingService {
     }
 
     private BigDecimal findRouteSurcharge(String op, String oc, String dp, String dc, String barangay) {
-        java.util.Optional<JntShippingRate> anyRow = barangay != null
+        java.util.Optional<JntShippingRate> anyRow = (barangay != null && dc != null
                 ? rateRepository.findByRouteAndBagSizeWithBarangay(op, oc, dp, dc, barangay, BIG)
-                : rateRepository.findByRouteAndBagSize(op, oc, dp, dc, BIG);
+                : java.util.Optional.<JntShippingRate>empty())
+                .or(() -> dc != null
+                ? rateRepository.findByRouteAndBagSize(op, oc, dp, dc, BIG)
+                : java.util.Optional.empty())
+                .or(() -> rateRepository.findByRouteAndBagSizeProvinceWide(op, oc, dp, BIG));
         return anyRow.map(JntShippingRate::getOverweightAdditionalFee).orElse(BigDecimal.ZERO);
     }
 
@@ -256,7 +263,8 @@ public class JntShippingService {
         String originProvince = norm(req.getOriginProvince());
         String originCity = norm(req.getOriginCity());
         String destProvince = norm(req.getDestinationProvince());
-        String destCity = norm(req.getDestinationCity());
+        String destCity = req.getDestinationCity() != null && !req.getDestinationCity().isBlank()
+                ? norm(req.getDestinationCity()) : null;
         String barangay = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? norm(req.getDestinationBarangay()) : null;
 
@@ -268,12 +276,15 @@ public class JntShippingService {
                     "EZ", "Auto-calculated (>8KG)", weight, total, BigDecimal.ZERO, total);
         }
 
-        // ── 8kg and under: bag-spec rate lookup ──
+// ── 8kg and under: bag-spec rate lookup ──
         String bagSize = resolveBagSize(weight);
-        JntShippingRate rate = (barangay != null
+        JntShippingRate rate = (barangay != null && destCity != null
                 ? rateRepository.findByRouteAndBagSizeWithBarangay(originProvince, originCity, destProvince, destCity, barangay, bagSize)
                 : java.util.Optional.<JntShippingRate>empty())
-                .or(() -> rateRepository.findByRouteAndBagSize(originProvince, originCity, destProvince, destCity, bagSize))
+                .or(() -> destCity != null
+                ? rateRepository.findByRouteAndBagSize(originProvince, originCity, destProvince, destCity, bagSize)
+                : java.util.Optional.empty())
+                .or(() -> rateRepository.findByRouteAndBagSizeProvinceWide(originProvince, originCity, destProvince, bagSize))
                 .orElseThrow(() -> new ResourceNotFoundException(
                 "No J&T rate configured for " + bagSize + " on this route yet."));
 

@@ -37,7 +37,7 @@ public class JntShippingRate {
     @Column(nullable = false)
     private String destinationProvince;
 
-    @Column(nullable = false)
+    @Column
     private String destinationCity;
 
     @Column(name = "destination_barangay")
