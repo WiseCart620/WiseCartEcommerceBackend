@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -333,28 +334,63 @@ public class ProductServiceImpl implements ProductService {
         }
 
         if (request.getVariations() != null) {
-            Map<Long, String> existingImagesByID = product.getVariations().stream()
-                    .filter(v -> v.getId() != null && v.getImageUrl() != null)
-                    .collect(Collectors.toMap(ProductVariation::getId, ProductVariation::getImageUrl));
+            Map<Long, ProductVariation> existingById = product.getVariations().stream()
+                    .filter(v -> v.getId() != null)
+                    .collect(Collectors.toMap(ProductVariation::getId, v -> v));
             Map<String, String> existingImagesByName = product.getVariations().stream()
                     .filter(v -> v.getImageUrl() != null)
                     .collect(Collectors.toMap(ProductVariation::getName, ProductVariation::getImageUrl, (a, b) -> a));
 
-            product.getVariations().clear();
+            Set<Long> incomingIds = request.getVariations().stream()
+                    .map(ProductVariationRequest::getId)
+                    .filter(Objects::nonNull)
+                    .collect(Collectors.toSet());
+
+            // Only remove variations actually dropped from the request. Never
+            // touch/recreate kept variations — recreating them breaks FKs held
+            // by cart_items / order_items.
+            List<ProductVariation> toRemove = product.getVariations().stream()
+                    .filter(v -> v.getId() != null && !incomingIds.contains(v.getId()))
+                    .collect(Collectors.toList());
+            product.getVariations().removeAll(toRemove);
 
             for (ProductVariationRequest varReq : request.getVariations()) {
                 validateVariationUniquenessForUpdate(varReq.getSku(), varReq.getUpc(), product.getId());
-                ProductVariation variation = mapToVariationEntity(varReq, product);
-                if (varReq.getId() != null && existingImagesByID.containsKey(varReq.getId())) {
-                    variation.setImageUrl(existingImagesByID.get(varReq.getId()));
-                } else if (existingImagesByName.containsKey(varReq.getName())) {
-                    variation.setImageUrl(existingImagesByName.get(varReq.getName()));
+
+                if (varReq.getId() != null && existingById.containsKey(varReq.getId())) {
+                    // Update the existing entity in place — keeps the same DB row/ID.
+                    ProductVariation existing = existingById.get(varReq.getId());
+                    existing.setName(varReq.getName());
+                    existing.setSku(varReq.getSku());
+                    existing.setUpc(varReq.getUpc());
+                    existing.setPrice(varReq.getPrice());
+                    existing.setDiscount(varReq.getDiscount() != null ? varReq.getDiscount() : BigDecimal.ZERO);
+                    existing.setStockQuantity(varReq.getStockQuantity());
+                    existing.setWeightKg(varReq.getWeightKg());
+                    existing.setHeightCm(varReq.getHeightCm());
+                    existing.setWidthCm(varReq.getWidthCm());
+                    existing.setLengthCm(varReq.getLengthCm());
+                } else {
+                    // Genuinely new variation.
+                    ProductVariation variation = mapToVariationEntity(varReq, product);
+                    if (existingImagesByName.containsKey(varReq.getName())) {
+                        variation.setImageUrl(existingImagesByName.get(varReq.getName()));
+                    }
+                    product.addVariation(variation);
                 }
-                product.addVariation(variation);
             }
         }
 
-        Product updatedProduct = productRepository.save(product);
+        Product updatedProduct;
+        try {
+            updatedProduct = productRepository.save(product);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            log.warn("Could not remove a variation for product {} because it is still referenced (e.g. in a cart or order): {}",
+                    id, e.getMessage());
+            throw new CustomException(
+                    "One of the variations you removed is still referenced by an existing cart or order and cannot be deleted. "
+                    + "Deactivate it instead of removing it.");
+        }
         log.info("Product updated: {} (ID: {})", updatedProduct.getName(), updatedProduct.getId());
         return mapToResponse(updatedProduct);
     }
