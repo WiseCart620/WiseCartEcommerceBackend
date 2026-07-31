@@ -62,6 +62,7 @@ public class CouponService {
                 .applicableCategories(request.getApplicableCategories() != null ? request.getApplicableCategories() : new java.util.HashSet<>())
                 .isCombinable(request.getCombinable() != null ? request.getCombinable() : false)
                 .combinableWith(request.getCombinableWith() != null ? request.getCombinableWith() : new HashSet<>())
+                .isAutomatic(request.getAutomatic() != null ? request.getAutomatic() : false)
                 .build();
         return toResponse(couponRepository.save(coupon));
     }
@@ -77,6 +78,7 @@ public class CouponService {
         coupon.setMaxUsageCount(request.getMaxUsageCount());
         coupon.setMaxUsagePerUser(request.getMaxUsagePerUser());
         coupon.setIsCombinable(request.getCombinable() != null ? request.getCombinable() : false);
+        coupon.setIsAutomatic(request.getAutomatic() != null ? request.getAutomatic() : false);
         if (request.getCombinableWith() != null) {
             coupon.setCombinableWith(request.getCombinableWith());
         }
@@ -119,6 +121,18 @@ public class CouponService {
         );
     }
 
+    public java.util.List<CouponResponse> getEligibleAutomaticCoupons(
+            java.math.BigDecimal subtotal) {
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        return couponRepository.findByIsActiveTrueAndIsAutomaticTrue().stream()
+                .filter(c -> c.getStartDate() == null || !now.isBefore(c.getStartDate()))
+                .filter(c -> c.getExpirationDate() == null || !now.isAfter(c.getExpirationDate()))
+                .filter(c -> c.getMinimumPurchaseAmount() == null
+                || subtotal.compareTo(c.getMinimumPurchaseAmount()) >= 0)
+                .map(this::toResponse)
+                .toList();
+    }
+
     private Coupon findById(Long id) {
         return couponRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Coupon not found with id: " + id));
@@ -142,6 +156,7 @@ public class CouponService {
                 .active(coupon.getIsActive())
                 .combinable(coupon.getIsCombinable())
                 .combinableWith(coupon.getCombinableWith())
+                .automatic(coupon.getIsAutomatic())
                 .applicableProducts(coupon.getApplicableProducts())
                 .applicableCategories(coupon.getApplicableCategories())
                 .createdAt(coupon.getCreatedAt())

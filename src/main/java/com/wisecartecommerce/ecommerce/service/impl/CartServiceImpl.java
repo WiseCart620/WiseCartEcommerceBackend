@@ -113,6 +113,9 @@ public class CartServiceImpl implements CartService {
                     totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
                 }
             }
+            if (totalDiscount.compareTo(cart.getSubtotal()) > 0) {
+                totalDiscount = cart.getSubtotal();
+            }
             cart.setCouponDiscountAmount(totalDiscount);
             cart.calculateTotals();
         }
@@ -475,13 +478,15 @@ public class CartServiceImpl implements CartService {
             cart.clearCoupon(); // remove all
         } else {
             cart.removeCoupon(couponCode);
-            // Recalculate total discount from remaining coupons
             BigDecimal totalDiscount = BigDecimal.ZERO;
             for (String code : cart.getCouponCodes()) {
                 Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
                 if (c != null) {
                     totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
                 }
+            }
+            if (totalDiscount.compareTo(cart.getSubtotal()) > 0) {
+                totalDiscount = cart.getSubtotal();
             }
             cart.setCouponDiscountAmount(totalDiscount);
             cart.calculateTotals();
@@ -928,6 +933,9 @@ public class CartServiceImpl implements CartService {
         }
         BigDecimal totalDiscount = (cart.getCouponDiscountAmount() != null ? cart.getCouponDiscountAmount() : BigDecimal.ZERO)
                 .add(discountAmount);
+        if (totalDiscount.compareTo(cart.getSubtotal()) > 0) {
+            totalDiscount = cart.getSubtotal();
+        }
         cart.setCouponDiscountAmount(totalDiscount);
         cart.calculateTotals();
     }

@@ -44,4 +44,5 @@ public class CouponRequest {
     private Set<Long> applicableCategories;
     private Boolean combinable = false;
     private Set<Long> combinableWith = new HashSet<>();
+    private Boolean automatic = false;
 }

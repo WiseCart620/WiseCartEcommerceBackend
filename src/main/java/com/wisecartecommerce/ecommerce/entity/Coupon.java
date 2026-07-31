@@ -60,6 +60,10 @@ public class Coupon {
     @Column(name = "is_combinable", nullable = false)
     private Boolean isCombinable = false;
 
+    @Column(name = "is_automatic", nullable = false)
+    @Builder.Default
+    private Boolean isAutomatic = false;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "coupon_combinable_with", joinColumns = @JoinColumn(name = "coupon_id"))
     @Column(name = "combinable_coupon_id")

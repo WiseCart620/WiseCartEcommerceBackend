@@ -28,6 +28,65 @@ public class CouponValidator {
      *
      * @throws CustomException with a user-friendly message on any failure
      */
+    /**
+     * Validates and prices a set of coupon codes applied together, enforcing
+     * combinability rules and preventing the combined discount from exceeding
+     * the subtotal.
+     */
+    public java.util.List<CouponValidationResult> validateCombination(
+            java.util.List<String> couponCodes, BigDecimal subtotal,
+            Long userId, List<CartItem> cartItems) {
+
+        java.util.List<CouponValidationResult> results = new java.util.ArrayList<>();
+        for (String code : couponCodes) {
+            results.add(validate(code, subtotal, userId, cartItems));
+        }
+
+        if (results.size() > 1) {
+            for (CouponValidationResult r : results) {
+                Coupon c = r.getCoupon();
+                if (!Boolean.TRUE.equals(c.getIsCombinable())) {
+                    throw new CustomException(
+                            "Coupon '" + c.getCode() + "' cannot be combined with other coupons");
+                }
+                Set<Long> restrictedTo = c.getCombinableWith();
+                if (restrictedTo != null && !restrictedTo.isEmpty()) {
+                    for (CouponValidationResult other : results) {
+                        if (other == r) {
+                            continue;
+                        }
+                        if (!restrictedTo.contains(other.getCoupon().getId())) {
+                            throw new CustomException(
+                                    "Coupon '" + c.getCode() + "' cannot be combined with '"
+                                    + other.getCoupon().getCode() + "'");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Cap combined percentage/fixed discount so total never exceeds subtotal
+        BigDecimal totalDiscount = results.stream()
+                .map(CouponValidationResult::getDiscountAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        if (totalDiscount.compareTo(subtotal) > 0) {
+            BigDecimal excess = totalDiscount.subtract(subtotal);
+            // trim the excess off the last discountable (non-free-shipping) coupon
+            for (int i = results.size() - 1; i >= 0 && excess.compareTo(BigDecimal.ZERO) > 0; i--) {
+                CouponValidationResult r = results.get(i);
+                if (r.isFreeShipping()) {
+                    continue;
+                }
+                BigDecimal reduceBy = r.getDiscountAmount().min(excess);
+                r.setDiscountAmount(r.getDiscountAmount().subtract(reduceBy));
+                excess = excess.subtract(reduceBy);
+            }
+        }
+
+        return results;
+    }
+
     public CouponValidationResult validate(String couponCode, BigDecimal subtotal,
             Long userId, List<CartItem> cartItems) {
         if (couponCode == null || couponCode.isBlank()) {

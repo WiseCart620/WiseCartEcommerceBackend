@@ -58,11 +58,7 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariationRepository productVariationRepository;
     private final ProductImageRepository productImageRepository;
 
-    // ── Label CSV helpers ─────────────────────────────────────────────────────
-    /**
-     * Convert a List<String> of badge labels to a compact CSV string for DB
-     * storage. e.g. ["New", "Hot"] → "New,Hot"
-     */
+
     private String labelsToString(List<String> labels) {
         if (labels == null || labels.isEmpty()) {
             return null;
@@ -74,10 +70,7 @@ public class ProductServiceImpl implements ProductService {
                 .collect(Collectors.joining(","));
     }
 
-    /**
-     * Parse a CSV label string from the DB back to a List<String>. e.g.
-     * "New,Hot" → ["New", "Hot"]
-     */
+
     private List<String> labelsFromString(String csv) {
         if (csv == null || csv.isBlank()) {
             return Collections.emptyList();

@@ -37,5 +37,6 @@ public class CouponResponse {
     private LocalDateTime updatedAt;
     private Boolean combinable;
     private Set<Long> combinableWith;
+    private Boolean automatic;
 
 }
