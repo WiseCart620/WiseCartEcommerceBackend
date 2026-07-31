@@ -63,6 +63,8 @@ public class CouponService {
                 .isCombinable(request.getCombinable() != null ? request.getCombinable() : false)
                 .combinableWith(request.getCombinableWith() != null ? request.getCombinableWith() : new HashSet<>())
                 .isAutomatic(request.getAutomatic() != null ? request.getAutomatic() : false)
+                .shippingDiscountPercent(request.getShippingDiscountPercent() != null
+                        ? request.getShippingDiscountPercent() : 100)
                 .build();
         return toResponse(couponRepository.save(coupon));
     }
@@ -79,6 +81,8 @@ public class CouponService {
         coupon.setMaxUsagePerUser(request.getMaxUsagePerUser());
         coupon.setIsCombinable(request.getCombinable() != null ? request.getCombinable() : false);
         coupon.setIsAutomatic(request.getAutomatic() != null ? request.getAutomatic() : false);
+        coupon.setShippingDiscountPercent(request.getShippingDiscountPercent() != null
+                ? request.getShippingDiscountPercent() : 100);
         if (request.getCombinableWith() != null) {
             coupon.setCombinableWith(request.getCombinableWith());
         }
@@ -157,6 +161,7 @@ public class CouponService {
                 .combinable(coupon.getIsCombinable())
                 .combinableWith(coupon.getCombinableWith())
                 .automatic(coupon.getIsAutomatic())
+                .shippingDiscountPercent(coupon.getShippingDiscountPercent())
                 .applicableProducts(coupon.getApplicableProducts())
                 .applicableCategories(coupon.getApplicableCategories())
                 .createdAt(coupon.getCreatedAt())

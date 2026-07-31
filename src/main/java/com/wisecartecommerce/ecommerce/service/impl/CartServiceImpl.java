@@ -86,6 +86,94 @@ public class CartServiceImpl implements CartService {
         return (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
     }
 
+    private void applyEligibleAutomaticCoupons(Cart cart) {
+        if (cart.getItems() == null || cart.getItems().isEmpty()
+                || cart.getSubtotal() == null || cart.getSubtotal().compareTo(BigDecimal.ZERO) <= 0) {
+            return;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Coupon> autoCoupons = couponRepository.findByIsActiveTrueAndIsAutomaticTrue();
+
+        for (Coupon coupon : autoCoupons) {
+            if (cart.getCouponCodes() != null && cart.getCouponCodes().contains(coupon.getCode())) {
+                continue;
+            }
+            if (coupon.getStartDate() != null && now.isBefore(coupon.getStartDate())) {
+                continue;
+            }
+            if (coupon.getExpirationDate() != null && now.isAfter(coupon.getExpirationDate())) {
+                continue;
+            }
+            if (coupon.getMaxUsageCount() != null && coupon.getCurrentUsageCount() >= coupon.getMaxUsageCount()) {
+                continue;
+            }
+            if (coupon.getMinimumPurchaseAmount() != null
+                    && cart.getSubtotal().compareTo(coupon.getMinimumPurchaseAmount()) < 0) {
+                continue;
+            }
+
+            int minQty = coupon.getMinimumProductQuantity() != null ? coupon.getMinimumProductQuantity() : 0;
+            if (minQty > 0) {
+                java.util.Set<Long> applicable = coupon.getApplicableProducts();
+                int qualifyingQty = cart.getItems().stream()
+                        .filter(item -> applicable == null || applicable.isEmpty()
+                        || applicable.contains(item.getProduct().getId()))
+                        .mapToInt(CartItem::getQuantity)
+                        .sum();
+                if (qualifyingQty < minQty) {
+                    continue;
+                }
+            }
+
+            if (coupon.getApplicableProducts() != null && !coupon.getApplicableProducts().isEmpty()) {
+                boolean hasApplicableProduct = cart.getItems().stream()
+                        .anyMatch(item -> coupon.getApplicableProducts().contains(item.getProduct().getId()));
+                if (!hasApplicableProduct) {
+                    continue;
+                }
+            }
+            if (coupon.getApplicableCategories() != null && !coupon.getApplicableCategories().isEmpty()) {
+                boolean hasApplicableCategory = cart.getItems().stream()
+                        .anyMatch(item -> item.getProduct().getCategory() != null
+                        && coupon.getApplicableCategories().contains(item.getProduct().getCategory().getId()));
+                if (!hasApplicableCategory) {
+                    continue;
+                }
+            }
+
+            if (cart.getCouponCodes() != null && !cart.getCouponCodes().isEmpty()) {
+                if (!Boolean.TRUE.equals(coupon.getIsCombinable())) {
+                    continue;
+                }
+                boolean allCompatible = true;
+                for (String existingCode : cart.getCouponCodes()) {
+                    Coupon existing = couponRepository.findByCodeAndIsActiveTrue(existingCode).orElse(null);
+                    if (existing == null) {
+                        continue;
+                    }
+                    if (!Boolean.TRUE.equals(existing.getIsCombinable())) {
+                        allCompatible = false;
+                        break;
+                    }
+                    if (!coupon.getCombinableWith().isEmpty() && !coupon.getCombinableWith().contains(existing.getId())) {
+                        allCompatible = false;
+                        break;
+                    }
+                    if (!existing.getCombinableWith().isEmpty() && !existing.getCombinableWith().contains(coupon.getId())) {
+                        allCompatible = false;
+                        break;
+                    }
+                }
+                if (!allCompatible) {
+                    continue;
+                }
+            }
+
+            applyCouponToCart(cart, coupon);
+        }
+    }
+
     private void revalidateAndRemoveInvalidCoupons(Cart cart, User user) {
         if (cart.getCouponCodes() == null || cart.getCouponCodes().isEmpty()) {
             return;
@@ -127,6 +215,9 @@ public class CartServiceImpl implements CartService {
         User user = getCurrentUser();
         Cart cart = cartRepository.findByUserIdWithItems(user.getId())
                 .orElseGet(() -> createNewCart(user));
+        applyEligibleAutomaticCoupons(cart);
+        cart.calculateTotals();
+        cart = cartRepository.save(cart);
         return mapToCartResponse(cart);
     }
 
@@ -237,6 +328,7 @@ public class CartServiceImpl implements CartService {
             cart.getItems().add(addonItem);
         }
 
+        applyEligibleAutomaticCoupons(cart);
         cart.calculateTotals();
         Cart savedCart = cartRepository.save(cart);
 
@@ -301,7 +393,9 @@ public class CartServiceImpl implements CartService {
         }
 
         cart.calculateTotals();
-        revalidateAndRemoveInvalidCoupons(cart, user); // ← add this
+        revalidateAndRemoveInvalidCoupons(cart, user);
+        applyEligibleAutomaticCoupons(cart);
+        cart.calculateTotals();
         Cart savedCart = cartRepository.save(cart);
         return mapToCartResponse(savedCart);
     }

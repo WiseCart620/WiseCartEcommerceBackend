@@ -32,6 +32,7 @@ public class CouponRequest {
     private Integer maxUsageCount;
     private Integer maxUsagePerUser;
     private Integer minimumProductQuantity;
+    private Integer shippingDiscountPercent = 100;
 
     @NotNull(message = "Start date is required")
     private LocalDateTime startDate;

@@ -64,6 +64,10 @@ public class Coupon {
     @Builder.Default
     private Boolean isAutomatic = false;
 
+    @Column(name = "shipping_discount_percent")
+    @Builder.Default
+    private Integer shippingDiscountPercent = 100;
+
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "coupon_combinable_with", joinColumns = @JoinColumn(name = "coupon_id"))
     @Column(name = "combinable_coupon_id")

@@ -38,5 +38,6 @@ public class CouponResponse {
     private Boolean combinable;
     private Set<Long> combinableWith;
     private Boolean automatic;
+    private Integer shippingDiscountPercent;
 
 }
