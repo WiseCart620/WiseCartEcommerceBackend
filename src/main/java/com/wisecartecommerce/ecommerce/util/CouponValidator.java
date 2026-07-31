@@ -1,18 +1,20 @@
 package com.wisecartecommerce.ecommerce.util;
 
-import com.wisecartecommerce.ecommerce.entity.CartItem;
-import com.wisecartecommerce.ecommerce.entity.Coupon;
-import com.wisecartecommerce.ecommerce.exception.CustomException;
-import com.wisecartecommerce.ecommerce.repository.CouponRepository;
-import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
+
+import org.springframework.stereotype.Component;
+
+import com.wisecartecommerce.ecommerce.entity.CartItem;
+import com.wisecartecommerce.ecommerce.entity.Coupon;
+import com.wisecartecommerce.ecommerce.exception.CustomException;
+import com.wisecartecommerce.ecommerce.repository.CouponRepository;
+import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
+
+import lombok.RequiredArgsConstructor;
 
 @Component
 @RequiredArgsConstructor
@@ -99,7 +101,6 @@ public class CouponValidator {
 
         LocalDateTime now = LocalDateTime.now();
 
-        // Date range
         if (coupon.getStartDate() != null && now.isBefore(coupon.getStartDate())) {
             throw new CustomException("Coupon is not yet valid");
         }
@@ -107,13 +108,11 @@ public class CouponValidator {
             throw new CustomException("Coupon has expired");
         }
 
-        // Global usage limit
         if (coupon.getMaxUsageCount() != null
                 && coupon.getCurrentUsageCount() >= coupon.getMaxUsageCount()) {
             throw new CustomException("Coupon usage limit has been reached");
         }
 
-        // Minimum purchase amount
         if (coupon.getMinimumPurchaseAmount() != null
                 && subtotal.compareTo(coupon.getMinimumPurchaseAmount()) < 0) {
             throw new CustomException(
@@ -121,7 +120,6 @@ public class CouponValidator {
                     + " required for this coupon");
         }
 
-        // Minimum product quantity
         int minQty = coupon.getMinimumProductQuantity() != null
                 ? coupon.getMinimumProductQuantity() : 0;
         if (minQty > 0 && cartItems != null && !cartItems.isEmpty()) {
