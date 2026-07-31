@@ -475,7 +475,7 @@ public class CartServiceImpl implements CartService {
                 .orElseThrow(() -> new ResourceNotFoundException("Cart not found"));
 
         if (couponCode == null || couponCode.isBlank()) {
-            cart.clearCoupon(); // remove all
+            cart.clearCoupon();
         } else {
             cart.removeCoupon(couponCode);
             BigDecimal totalDiscount = BigDecimal.ZERO;
