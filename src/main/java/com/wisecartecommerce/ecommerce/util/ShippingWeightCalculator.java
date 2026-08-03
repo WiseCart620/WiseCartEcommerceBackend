@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import com.wisecartecommerce.ecommerce.entity.CartItem;
 import com.wisecartecommerce.ecommerce.entity.OrderItem;
+import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -13,14 +14,23 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class ShippingWeightCalculator {
 
-    public static final int DEFAULT_ITEM_WEIGHT_GRAMS = 500;
+    private static final int FALLBACK_DEFAULT_ITEM_WEIGHT_GRAMS = 500;
+
+    private final AppSettingsRepository appSettingsRepository;
+
+    public int getDefaultItemWeightGrams() {
+        return appSettingsRepository.findAll().stream()
+                .findFirst()
+                .map(s -> s.getDefaultWeightGrams() > 0 ? s.getDefaultWeightGrams() : FALLBACK_DEFAULT_ITEM_WEIGHT_GRAMS)
+                .orElse(FALLBACK_DEFAULT_ITEM_WEIGHT_GRAMS);
+    }
 
     public int calculateCartWeightGrams(List<CartItem> items) {
         int total = 0;
         for (CartItem item : items) {
             total += resolveCartItemWeightGrams(item) * item.getQuantity();
         }
-        return Math.max(total, DEFAULT_ITEM_WEIGHT_GRAMS);
+        return Math.max(total, getDefaultItemWeightGrams());
     }
 
     private int resolveCartItemWeightGrams(CartItem item) {
@@ -45,11 +55,11 @@ public class ShippingWeightCalculator {
             }
             total += w * item.getQuantity();
         }
-        return Math.max(total, DEFAULT_ITEM_WEIGHT_GRAMS);
+        return Math.max(total, getDefaultItemWeightGrams());
     }
 
     public int calculateRawWeightGrams(int weightGramsPerItem, int quantity) {
-        return Math.max(weightGramsPerItem * quantity, DEFAULT_ITEM_WEIGHT_GRAMS);
+        return Math.max(weightGramsPerItem * quantity, getDefaultItemWeightGrams());
     }
 
     /**

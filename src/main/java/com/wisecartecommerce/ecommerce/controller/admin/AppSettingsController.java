@@ -33,6 +33,7 @@ public class AppSettingsController {
         defaults.setStoreName("WiseCart");
         defaults.setStoreEmail("");
         defaults.setStorePhone("");
+        defaults.setDefaultWeightGrams(500);
         return repository.save(defaults);
     }
 
@@ -51,7 +52,8 @@ public class AppSettingsController {
                 "vatRate", s.getVatRate(),
                 "freeShippingThreshold", s.getFreeShippingThreshold(),
                 "flashEnabled", s.isFlashEnabled(),
-                "jntEnabled", s.isJntEnabled()
+                "jntEnabled", s.isJntEnabled(),
+                "defaultWeightGrams", s.getDefaultWeightGrams()
         ));
     }
 
@@ -70,6 +72,7 @@ public class AppSettingsController {
         settings.setJntOriginCity(request.getJntOriginCity());
         settings.setFlashEnabled(request.isFlashEnabled());
         settings.setJntEnabled(request.isJntEnabled());
+        settings.setDefaultWeightGrams(request.getDefaultWeightGrams());
         return ResponseEntity.ok(repository.save(settings));
     }
 }

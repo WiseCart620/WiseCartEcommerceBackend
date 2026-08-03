@@ -627,7 +627,7 @@ public class OrderServiceImpl implements OrderService {
             }
             try {
                 BigDecimal weightKg = BigDecimal.valueOf(
-                        Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS))
+                        Math.max(totalWeightGrams, weightCalculator.getDefaultItemWeightGrams()))
                         .divide(BigDecimal.valueOf(1000), 2, RoundingMode.HALF_UP);
 
                 AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
@@ -657,7 +657,7 @@ public class OrderServiceImpl implements OrderService {
         } else {
             try {
                 int cat = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
-                int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
+                int weight = Math.max(totalWeightGrams, weightCalculator.getDefaultItemWeightGrams());
                 FlashShippingRateResponse rate = flashShippingService.estimateRateManual(
                         request.getState(), request.getCity(), request.getPostalCode(), weight, cat);
                 shippingAmount = rate.getShippingFee();
@@ -710,7 +710,7 @@ public class OrderServiceImpl implements OrderService {
             saved = orderRepository.save(saved);
         } else {
             int category = request.getExpressCategory() != null ? request.getExpressCategory() : 1;
-            int weight = Math.max(totalWeightGrams, ShippingWeightCalculator.DEFAULT_ITEM_WEIGHT_GRAMS);
+            int weight = Math.max(totalWeightGrams, weightCalculator.getDefaultItemWeightGrams());
             assignFlashOrderNumber(saved, shippingAddress, weight, category);
             saved = orderRepository.save(saved);
         }

@@ -68,6 +68,10 @@ public class AppSettings {
     @Builder.Default
     private boolean jntEnabled = true;
 
+    @Column(name = "default_weight_grams", nullable = false)
+    @Builder.Default
+    private int defaultWeightGrams = 500;
+
     @PrePersist
     @PreUpdate
     public void onUpdate() {
