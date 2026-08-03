@@ -96,7 +96,6 @@ public class OrderServiceImpl implements OrderService {
 
     // ── Constants ──────────────────────────────────────────────────────────────
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
-    private static final BigDecimal FALLBACK_SHIPPING = new BigDecimal("150.00");
 
     // ══════════════════════════════════════════════════════════════════════════
     // Authenticated order creation
@@ -649,9 +648,11 @@ public class OrderServiceImpl implements OrderService {
                 jntReq.setWeightKg(weightKg);
 
                 shippingAmount = jntShippingService.estimate(jntReq).getTotalAmount();
+            } catch (CustomException e) {
+                throw e;
             } catch (Exception e) {
                 log.warn("J&T shipping failed for guest order: {}", e.getMessage());
-                shippingAmount = FALLBACK_SHIPPING;
+                throw new CustomException("Unable to calculate J&T Express shipping fee for your address. Please try again or choose a different shipping method.");
             }
         } else {
             try {
@@ -663,9 +664,11 @@ public class OrderServiceImpl implements OrderService {
                 if (rate.isUpCountry() && rate.getUpCountryFee() != null) {
                     shippingAmount = shippingAmount.add(rate.getUpCountryFee());
                 }
+            } catch (CustomException e) {
+                throw e;
             } catch (Exception e) {
                 log.warn("Flash shipping failed for guest order: {}", e.getMessage());
-                shippingAmount = FALLBACK_SHIPPING;
+                throw new CustomException("Unable to calculate Flash Express shipping fee for your address. Please try again or choose a different shipping method.");
             }
         }
 
@@ -816,18 +819,14 @@ public class OrderServiceImpl implements OrderService {
             }
             log.info("Flash Express: ₱{} ({}g, cat {})", fee, weightGrams, category);
             return fee;
+        } catch (CustomException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("Flash Express unavailable, using fallback: {}", e.getMessage());
-            return FALLBACK_SHIPPING;
+            log.warn("Flash Express shipping calculation failed: {}", e.getMessage());
+            throw new CustomException("Unable to calculate Flash Express shipping fee for your address. Please try again or choose a different shipping method.");
         }
     }
 
-    /**
-     * Looks up J&T's admin-configured rate table using the ACTUAL product
-     * weight (converted to KG) and the destination's province/city/barangay.
-     * Origin is fixed from AppSettings (your warehouse), not chosen by the
-     * customer.
-     */
     private BigDecimal resolveJntShippingFee(Address destination, List<CartItem> cartItems) {
         try {
             BigDecimal weightKg = weightCalculator.calculateCartWeightKg(cartItems);
@@ -853,9 +852,11 @@ public class OrderServiceImpl implements OrderService {
             log.info("J&T Express: ₱{} ({}kg, {}/{}/{})", est.getTotalAmount(), weightKg,
                     destination.getState(), destination.getCity(), destination.getBarangay());
             return est.getTotalAmount();
+        } catch (CustomException e) {
+            throw e;
         } catch (Exception e) {
-            log.warn("J&T Express unavailable, using fallback: {}", e.getMessage());
-            return FALLBACK_SHIPPING;
+            log.warn("J&T Express shipping calculation failed: {}", e.getMessage());
+            throw new CustomException("Unable to calculate J&T Express shipping fee for your address. Please try again or choose a different shipping method.");
         }
     }
 
