@@ -1,14 +1,14 @@
 package com.wisecartecommerce.ecommerce.Dto.Response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
-
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
@@ -48,6 +48,7 @@ public class CartResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CartItemResponse {
+
         private Long id;
         private Long productId;
         private String productName;
@@ -69,6 +70,7 @@ public class CartResponse {
         private LocalDateTime addedAt;
         private LocalDateTime updatedAt;
         private String variationName;
+        private Integer weightGrams;
         private boolean isAddon;
         private Long addonProductId;
         private String addonProductName;
@@ -82,6 +84,7 @@ public class CartResponse {
     @NoArgsConstructor
     @AllArgsConstructor
     public static class CartSummary {
+
         private Integer totalItems;
         private BigDecimal subtotal;
         private BigDecimal discount;

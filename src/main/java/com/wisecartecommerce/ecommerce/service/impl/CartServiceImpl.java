@@ -1107,6 +1107,17 @@ public class CartServiceImpl implements CartService {
             }
         }
 
+        int itemWeightGrams = product.getWeightGrams();
+        if (cartItem.getVariation() != null) {
+            try {
+                int vw = cartItem.getVariation().getWeightGrams();
+                if (vw > 0) {
+                    itemWeightGrams = vw;
+                }
+            } catch (jakarta.persistence.EntityNotFoundException e) {
+            }
+        }
+
         return CartResponse.CartItemResponse.builder()
                 .id(cartItem.getId())
                 .productId(product.getId())
@@ -1123,6 +1134,7 @@ public class CartServiceImpl implements CartService {
                 .inStock(inStock)
                 .stockQuantity(stockQuantity)
                 .variationName(variationName)
+                .weightGrams(itemWeightGrams)
                 .isAddon(cartItem.isAddon())
                 .addonProductId(cartItem.isAddon() && cartItem.getAddonProduct() != null
                         ? cartItem.getAddonProduct().getId()
