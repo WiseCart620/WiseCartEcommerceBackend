@@ -1477,19 +1477,29 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private void assignFlashOrderNumber(Order saved, Address shippingAddress, int weightGrams, int expressCategory) {
+        FlashOrderResult flashOrder = null;
         try {
-            FlashOrderResult flashOrder = flashShippingService.createOrder(
-                    saved, shippingAddress, weightGrams, expressCategory);
-
-            if (flashOrder != null && flashOrder.getPno() != null) {
-                saved.setTrackingNumber(flashOrder.getPno());
-                saved.setShippingCarrier("Flash Express");
-                log.info("Flash order created: PNO={} for order={}", flashOrder.getPno(), saved.getOrderNumber());
-            } else {
-                log.warn("Flash order creation returned null for order={}", saved.getOrderNumber());
-            }
+            flashOrder = flashShippingService.createOrder(saved, shippingAddress, weightGrams, expressCategory);
         } catch (Exception e) {
             log.warn("Flash order creation failed for order={}: {}", saved.getOrderNumber(), e.getMessage());
+        }
+
+        if (flashOrder != null && flashOrder.getPno() != null) {
+            saved.setTrackingNumber(flashOrder.getPno());
+            saved.setShippingCarrier("Flash Express");
+            log.info("Flash order created: PNO={} for order={}", flashOrder.getPno(), saved.getOrderNumber());
+        } else {
+            log.warn("Flash order creation returned null/failed for order={} — flagging for manual booking", saved.getOrderNumber());
+            saved.setShippingCarrier("Flash Express");
+            saved.setNotes(saved.getNotes() != null
+                    ? saved.getNotes() + "\n[SHIPPING_BOOKING_FAILED] Flash Express booking could not be completed automatically. Please book manually."
+                    : "[SHIPPING_BOOKING_FAILED] Flash Express booking could not be completed automatically. Please book manually.");
+            notificationService.createAdminNotification(
+                    "Shipping Booking Failed",
+                    "Order #" + saved.getOrderNumber() + " was paid but Flash Express booking failed. Manual booking required.",
+                    "ORDER",
+                    saved.getId(),
+                    "ORDER");
         }
     }
 
