@@ -6,6 +6,7 @@ import lombok.Data;
 
 @Data
 public class JntRouteRateRequest {
+
     private String originProvince;
     private String originCity;
     private String destinationProvince;
@@ -19,6 +20,9 @@ public class JntRouteRateRequest {
     private BigDecimal mediumItemFee;
     private BigDecimal bigFee;
     private BigDecimal bigItemFee;
+    private Long smallId;
+    private Long mediumId;
+    private Long bigId;
 
     private BigDecimal overweightAdditionalFee;
     private Boolean active;

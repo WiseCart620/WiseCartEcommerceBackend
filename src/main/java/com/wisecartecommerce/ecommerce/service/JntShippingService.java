@@ -171,13 +171,13 @@ public class JntShippingService {
     @org.springframework.transaction.annotation.Transactional
     public void saveRouteRates(com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req) {
         BigDecimal overweightFee = req.getOverweightAdditionalFee() != null ? req.getOverweightAdditionalFee() : BigDecimal.ZERO;
-        upsertBagRate(req, SMALL, req.getSmallFee(), req.getSmallItemFee(), overweightFee);
-        upsertBagRate(req, MEDIUM, req.getMediumFee(), req.getMediumItemFee(), overweightFee);
-        upsertBagRate(req, BIG, req.getBigFee(), req.getBigItemFee(), overweightFee);
+        upsertBagRate(req, SMALL, req.getSmallFee(), req.getSmallItemFee(), overweightFee, req.getSmallId());
+        upsertBagRate(req, MEDIUM, req.getMediumFee(), req.getMediumItemFee(), overweightFee, req.getMediumId());
+        upsertBagRate(req, BIG, req.getBigFee(), req.getBigItemFee(), overweightFee, req.getBigId());
     }
 
     private void upsertBagRate(com.wisecartecommerce.ecommerce.Dto.Request.JntRouteRateRequest req,
-            String bagSize, BigDecimal fee, BigDecimal itemFee, BigDecimal overweightFee) {
+            String bagSize, BigDecimal fee, BigDecimal itemFee, BigDecimal overweightFee, Long existingId) {
         String op = norm(req.getOriginProvince()), oc = norm(req.getOriginCity());
         String dp = norm(req.getDestinationProvince());
         String dc = req.getDestinationCity() != null && !req.getDestinationCity().isBlank()
@@ -185,9 +185,9 @@ public class JntShippingService {
         String db = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? norm(req.getDestinationBarangay()) : null;
 
-        JntShippingRate rate = rateRepository
-                .findExactRoute(op, oc, dp, dc, db, bagSize)
-                .orElseGet(JntShippingRate::new);
+        JntShippingRate rate = existingId != null
+                ? rateRepository.findById(existingId).orElseGet(JntShippingRate::new)
+                : rateRepository.findExactRoute(op, oc, dp, dc, db, bagSize).orElseGet(JntShippingRate::new);
 
         rate.setOriginProvince(op);
         rate.setOriginCity(oc);
