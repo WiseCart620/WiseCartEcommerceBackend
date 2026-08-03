@@ -49,7 +49,9 @@ public class AppSettingsController {
                 "cartEnabled", s.isCartEnabled(),
                 "buyNowEnabled", s.isBuyNowEnabled(),
                 "vatRate", s.getVatRate(),
-                "freeShippingThreshold", s.getFreeShippingThreshold()
+                "freeShippingThreshold", s.getFreeShippingThreshold(),
+                "flashEnabled", s.isFlashEnabled(),
+                "jntEnabled", s.isJntEnabled()
         ));
     }
 
@@ -66,6 +68,8 @@ public class AppSettingsController {
         settings.setBuyNowEnabled(request.isBuyNowEnabled());
         settings.setJntOriginProvince(request.getJntOriginProvince());
         settings.setJntOriginCity(request.getJntOriginCity());
+        settings.setFlashEnabled(request.isFlashEnabled());
+        settings.setJntEnabled(request.isJntEnabled());
         return ResponseEntity.ok(repository.save(settings));
     }
 }
