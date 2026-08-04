@@ -124,7 +124,7 @@ public class FileServingController {
                     : "inline; filename=\"" + filename + "\"";
             headers.set(HttpHeaders.CONTENT_DISPOSITION, disposition);
 
-            headers.setCacheControl("max-age=3600");
+            headers.setCacheControl("public, max-age=31536000, immutable");
 
             return new ResponseEntity<>(resource, headers, HttpStatus.OK);
 

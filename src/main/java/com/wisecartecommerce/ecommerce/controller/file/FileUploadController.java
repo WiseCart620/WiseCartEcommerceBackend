@@ -1,21 +1,30 @@
 package com.wisecartecommerce.ecommerce.controller.file;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 @RestController
 @RequestMapping("/files")
@@ -217,15 +226,28 @@ public class FileUploadController {
 
         String newFilename;
         if (prefix != null && !prefix.trim().isEmpty()) {
-            newFilename = prefix.trim() + "_" + System.currentTimeMillis() + "_" +
-                    UUID.randomUUID().toString().substring(0, 8) + fileExtension;
+            newFilename = prefix.trim() + "_" + System.currentTimeMillis() + "_"
+                    + UUID.randomUUID().toString().substring(0, 8) + fileExtension;
         } else {
-            newFilename = System.currentTimeMillis() + "_" +
-                    UUID.randomUUID().toString().substring(0, 8) + fileExtension;
+            newFilename = System.currentTimeMillis() + "_"
+                    + UUID.randomUUID().toString().substring(0, 8) + fileExtension;
         }
 
         Path filePath = uploadPath.resolve(newFilename);
-        Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+        String contentType = file.getContentType();
+        boolean isResizableImage = contentType != null && contentType.startsWith("image/")
+                && !"image/gif".equals(contentType);
+
+        if (isResizableImage) {
+            net.coobird.thumbnailator.Thumbnails.of(file.getInputStream())
+                    .size(1200, 1200)
+                    .outputQuality(0.82)
+                    .keepAspectRatio(true)
+                    .toFile(filePath.toFile());
+        } else {
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+        }
 
         String fileUrl = "/api/files/serve?path=" + directory + "/" + newFilename;
 
@@ -234,10 +256,10 @@ public class FileUploadController {
         fileInfo.put("filename", newFilename);
         fileInfo.put("originalName", originalFilename);
         fileInfo.put("type", file.getContentType());
-        fileInfo.put("size", String.valueOf(file.getSize()));
+        fileInfo.put("size", String.valueOf(Files.size(filePath)));
         fileInfo.put("path", directory + "/" + newFilename);
 
-        log.info("File saved: {}", filePath);
+        log.info("File saved: {} (resized: {})", filePath, isResizableImage);
         return fileInfo;
     }
 }

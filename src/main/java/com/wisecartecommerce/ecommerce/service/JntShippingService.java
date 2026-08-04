@@ -296,7 +296,7 @@ public class JntShippingService {
         BigDecimal codFeeWithVat = BigDecimal.ZERO;
         if (isCod) {
             codFee = declaredValue.multiply(codFeeRate).setScale(2, RoundingMode.HALF_UP);
-            codFeeWithVat = codFee; // no VAT markup — shipping fee already includes VAT
+            codFeeWithVat = codFee;
         }
 
         if (weight.compareTo(new BigDecimal("8")) > 0) {
