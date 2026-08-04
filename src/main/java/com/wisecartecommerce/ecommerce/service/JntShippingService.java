@@ -288,7 +288,6 @@ public class JntShippingService {
         BigDecimal valuationRate = orDefault(settings != null ? settings.getJntValuationFeeRate() : null, new BigDecimal("0.01"));
         BigDecimal valuationMin = orDefault(settings != null ? settings.getJntValuationFeeMinimum() : null, new BigDecimal("5"));
         BigDecimal codFeeRate = orDefault(settings != null ? settings.getJntCodFeeRate() : null, new BigDecimal("0.0275"));
-        BigDecimal vatRate = orDefault(settings != null ? settings.getVatRate() : null, new BigDecimal("0.12"));
 
         BigDecimal valuationFee = declaredValue.multiply(valuationRate).max(valuationMin)
                 .setScale(2, RoundingMode.HALF_UP);
@@ -297,7 +296,7 @@ public class JntShippingService {
         BigDecimal codFeeWithVat = BigDecimal.ZERO;
         if (isCod) {
             codFee = declaredValue.multiply(codFeeRate).setScale(2, RoundingMode.HALF_UP);
-            codFeeWithVat = codFee.multiply(BigDecimal.ONE.add(vatRate)).setScale(2, RoundingMode.HALF_UP);
+            codFeeWithVat = codFee; // no VAT markup — shipping fee already includes VAT
         }
 
         if (weight.compareTo(new BigDecimal("8")) > 0) {

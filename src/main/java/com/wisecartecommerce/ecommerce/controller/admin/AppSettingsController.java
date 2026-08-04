@@ -73,6 +73,11 @@ public class AppSettingsController {
         settings.setFlashEnabled(request.isFlashEnabled());
         settings.setJntEnabled(request.isJntEnabled());
         settings.setDefaultWeightGrams(request.getDefaultWeightGrams());
+        settings.setJntCodFeeRate(request.getJntCodFeeRate());
+        settings.setJntValuationFeeRate(request.getJntValuationFeeRate());
+        settings.setJntValuationFeeMinimum(request.getJntValuationFeeMinimum());
+        settings.setJntOverweightRatePerKg(request.getJntOverweightRatePerKg());
+        settings.setJntOverweightBaseFee(request.getJntOverweightBaseFee());
         return ResponseEntity.ok(repository.save(settings));
     }
 }
