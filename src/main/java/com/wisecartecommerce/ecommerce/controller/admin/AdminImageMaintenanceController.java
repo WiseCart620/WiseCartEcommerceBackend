@@ -70,9 +70,8 @@ public class AdminImageMaintenanceController {
                     totalBytesBefore += sizeBefore;
 
                     if (!dryRun) {
-                        // Resize into a temp file first, then atomically replace —
-                        // avoids corrupting the original if something goes wrong mid-write
-                        Path tempFile = path.resolveSibling(path.getFileName() + ".tmp");
+                        String origName = path.getFileName().toString();
+Path tempFile = path.resolveSibling("tmp_" + origName);
 
                         net.coobird.thumbnailator.Thumbnails.of(path.toFile())
                                 .size(1200, 1200)
