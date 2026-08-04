@@ -259,7 +259,7 @@ jobs:
           find backups/ -name "backup_*.sql.gz" -mtime +7 -delete 2>/dev/null || true
 
           # Save current image for rollback
-          CURRENT_IMAGE=$(docker inspect wisecart-ecommerce-app --format='{{.Config.Image}}' 2>/dev/null || echo "none")
+          CURRENT_IMAGE=$(docker inspect wisecart-ecommerce-app --format='{{index .RepoDigests 0}}' 2>/dev/null || echo "none")
           echo "📌 Current image: $CURRENT_IMAGE"
 
           # Pull new image
@@ -304,6 +304,7 @@ jobs:
             echo "🔙 Rolling back to previous version..."
 
             if [ "$CURRENT_IMAGE" != "none" ]; then
+              docker pull "$CURRENT_IMAGE" || true
               docker rm -f wisecart-ecommerce-app || true
               docker run -d \
                 --name wisecart-ecommerce-app \
@@ -312,7 +313,7 @@ jobs:
                 -v wisecart-ecommerce_uploads:/app/uploads \
                 -v wisecart-ecommerce_app_logs:/app/logs \
                 --restart unless-stopped \
-                $CURRENT_IMAGE
+                "$CURRENT_IMAGE"
               echo "✅ Rolled back to: $CURRENT_IMAGE"
             fi
 
