@@ -200,7 +200,8 @@ public class OrderServiceImpl implements OrderService {
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
-                    cart.getItems());
+                    cart.getItems(),
+                    "cod".equalsIgnoreCase(request.getPaymentMethod()));
         }
 
 // ── Tax (VAT on subtotal after discount) ───────────────────────────────
@@ -392,6 +393,9 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
+        boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
+        boolean useJnt = "jnt".equalsIgnoreCase(request.getShippingCarrier());
+
         BigDecimal shippingAmount;
         if (couponFreeShipping) {
             shippingAmount = BigDecimal.ZERO;
@@ -401,16 +405,14 @@ public class OrderServiceImpl implements OrderService {
                     request.getExpressCategory(),
                     shippingAddress,
                     subtotal,
-                    cart.getItems());
+                    cart.getItems(),
+                    isCod);
         }
 
         BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
         BigDecimal vatRate = getVatRateFromSettings();
         BigDecimal taxAmount = taxableAmount.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
-
-        boolean isCod = "cod".equalsIgnoreCase(request.getPaymentMethod());
-        boolean useJnt = "jnt".equalsIgnoreCase(request.getShippingCarrier());
 
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
@@ -646,6 +648,8 @@ public class OrderServiceImpl implements OrderService {
                 jntReq.setDestinationCity(request.getCity());
                 jntReq.setDestinationBarangay(request.getBarangay());
                 jntReq.setWeightKg(weightKg);
+                jntReq.setDeclaredValue(taxableSubtotal);
+                jntReq.setCod("cod".equalsIgnoreCase(request.getPaymentMethod()));
 
                 shippingAmount = jntShippingService.estimate(jntReq).getTotalAmount();
             } catch (CustomException e) {
@@ -784,7 +788,8 @@ public class OrderServiceImpl implements OrderService {
             Integer expressCategory,
             Address destination,
             BigDecimal subtotal,
-            List<CartItem> cartItems) {
+            List<CartItem> cartItems,
+            boolean isCodPaymentMethod) {
 
         if (subtotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0) {
             log.info("Free shipping applied (subtotal ₱{})", subtotal);
@@ -799,14 +804,10 @@ public class OrderServiceImpl implements OrderService {
             if (!jntOn) {
                 throw new CustomException("J&T Express is currently unavailable. Please choose another shipping method.");
             }
-            return resolveJntShippingFee(destination, cartItems);
+            return resolveJntShippingFee(destination, cartItems, subtotal, isCodPaymentMethod);
         }
         if (!flashOn) {
             throw new CustomException("Flash Express is currently unavailable. Please choose another shipping method.");
-        }
-
-        if ("jnt".equalsIgnoreCase(shippingCarrier)) {
-            return resolveJntShippingFee(destination, cartItems);
         }
 
         try {
@@ -827,7 +828,7 @@ public class OrderServiceImpl implements OrderService {
         }
     }
 
-    private BigDecimal resolveJntShippingFee(Address destination, List<CartItem> cartItems) {
+    private BigDecimal resolveJntShippingFee(Address destination, List<CartItem> cartItems, BigDecimal subtotal, boolean isCod) {
         try {
             BigDecimal weightKg = weightCalculator.calculateCartWeightKg(cartItems);
 
@@ -847,6 +848,8 @@ public class OrderServiceImpl implements OrderService {
             req.setDestinationCity(destination.getCity());
             req.setDestinationBarangay(destination.getBarangay());
             req.setWeightKg(weightKg);
+            req.setDeclaredValue(subtotal);
+            req.setCod(isCod);
 
             com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse est = jntShippingService.estimate(req);
             log.info("J&T Express: ₱{} ({}kg, {}/{}/{})", est.getTotalAmount(), weightKg,

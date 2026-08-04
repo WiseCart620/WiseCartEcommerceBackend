@@ -11,8 +11,10 @@ import org.springframework.stereotype.Service;
 
 import com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse;
+import com.wisecartecommerce.ecommerce.entity.AppSettings;
 import com.wisecartecommerce.ecommerce.entity.JntShippingRate;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
+import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
 import com.wisecartecommerce.ecommerce.repository.JntShippingRateRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,15 @@ import lombok.RequiredArgsConstructor;
 public class JntShippingService {
 
     private final JntShippingRateRepository rateRepository;
+    private final AppSettingsRepository appSettingsRepository;
+
+    private AppSettings settings() {
+        return appSettingsRepository.findAll().stream().findFirst().orElse(null);
+    }
+
+    private BigDecimal orDefault(BigDecimal value, BigDecimal fallback) {
+        return value != null ? value : fallback;
+    }
 
     public Page<com.wisecartecommerce.ecommerce.Dto.Response.JntRouteRateSummary> getGroupedRoutes(String search, Pageable pageable) {
         List<JntShippingRate> all = rateRepository.findAllForGrouping();
@@ -220,13 +231,15 @@ public class JntShippingService {
         return BIG;
     }
 
-    private BigDecimal calculateOverweightFee(BigDecimal weightKg, BigDecimal routeSurcharge) {
+    private BigDecimal calculateOverweightFee(BigDecimal weightKg, BigDecimal routeSurcharge, AppSettings settings) {
         if (weightKg.compareTo(MAX_JNT_WEIGHT_KG) > 0) {
             throw new com.wisecartecommerce.ecommerce.exception.CustomException(
                     "Package weight (" + weightKg + "kg) exceeds J&T Express's 50kg maximum.");
         }
         int ceilKg = weightKg.setScale(0, RoundingMode.CEILING).intValueExact();
-        BigDecimal base = BigDecimal.valueOf(70L * ceilKg + 15L);
+        BigDecimal ratePerKg = orDefault(settings != null ? settings.getJntOverweightRatePerKg() : null, new BigDecimal("70"));
+        BigDecimal baseFee = orDefault(settings != null ? settings.getJntOverweightBaseFee() : null, new BigDecimal("15"));
+        BigDecimal base = ratePerKg.multiply(BigDecimal.valueOf(ceilKg)).add(baseFee);
         BigDecimal surcharge = routeSurcharge != null ? routeSurcharge : BigDecimal.ZERO;
         return base.add(surcharge).setScale(2, RoundingMode.HALF_UP);
     }
@@ -268,15 +281,34 @@ public class JntShippingService {
         String barangay = req.getDestinationBarangay() != null && !req.getDestinationBarangay().isBlank()
                 ? norm(req.getDestinationBarangay()) : null;
 
-        // ── Over 8kg: formula + route-specific surcharge, ignore bag-size table ──
-        if (weight.compareTo(new BigDecimal("8")) > 0) {
-            BigDecimal surcharge = findRouteSurcharge(originProvince, originCity, destProvince, destCity, barangay);
-            BigDecimal total = calculateOverweightFee(weight, surcharge);
-            return new JntEstimateResponse(originProvince, originCity, destProvince, destCity, barangay,
-                    "EZ", "Auto-calculated (>8KG)", weight, total, BigDecimal.ZERO, total);
+        AppSettings settings = settings();
+        boolean isCod = Boolean.TRUE.equals(req.getCod());
+        BigDecimal declaredValue = req.getDeclaredValue() != null ? req.getDeclaredValue() : BigDecimal.ZERO;
+
+        BigDecimal valuationRate = orDefault(settings != null ? settings.getJntValuationFeeRate() : null, new BigDecimal("0.01"));
+        BigDecimal valuationMin = orDefault(settings != null ? settings.getJntValuationFeeMinimum() : null, new BigDecimal("5"));
+        BigDecimal codFeeRate = orDefault(settings != null ? settings.getJntCodFeeRate() : null, new BigDecimal("0.0275"));
+        BigDecimal vatRate = orDefault(settings != null ? settings.getVatRate() : null, new BigDecimal("0.12"));
+
+        BigDecimal valuationFee = declaredValue.multiply(valuationRate).max(valuationMin)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        BigDecimal codFee = BigDecimal.ZERO;
+        BigDecimal codFeeWithVat = BigDecimal.ZERO;
+        if (isCod) {
+            codFee = declaredValue.multiply(codFeeRate).setScale(2, RoundingMode.HALF_UP);
+            codFeeWithVat = codFee.multiply(BigDecimal.ONE.add(vatRate)).setScale(2, RoundingMode.HALF_UP);
         }
 
-// ── 8kg and under: bag-spec rate lookup ──
+        if (weight.compareTo(new BigDecimal("8")) > 0) {
+            BigDecimal surcharge = findRouteSurcharge(originProvince, originCity, destProvince, destCity, barangay);
+            BigDecimal overweightShipping = calculateOverweightFee(weight, surcharge, settings);
+            BigDecimal total = overweightShipping.add(valuationFee).add(codFeeWithVat).setScale(2, RoundingMode.HALF_UP);
+            return new JntEstimateResponse(originProvince, originCity, destProvince, destCity, barangay,
+                    "EZ", "Auto-calculated (>8KG)", weight, overweightShipping, BigDecimal.ZERO,
+                    valuationFee, codFee, codFeeWithVat, total);
+        }
+
         String bagSize = resolveBagSize(weight);
         JntShippingRate rate = (barangay != null && destCity != null
                 ? rateRepository.findByRouteAndBagSizeWithBarangay(originProvince, originCity, destProvince, destCity, barangay, bagSize)
@@ -290,14 +322,14 @@ public class JntShippingService {
 
         BigDecimal shippingFee = rate.getShippingFee().setScale(2, RoundingMode.HALF_UP);
         BigDecimal itemFee = rate.getItemAdditionalFee() != null ? rate.getItemAdditionalFee() : BigDecimal.ZERO;
-        BigDecimal total = shippingFee.add(itemFee).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal total = shippingFee.add(itemFee).add(valuationFee).add(codFeeWithVat).setScale(2, RoundingMode.HALF_UP);
 
         return new JntEstimateResponse(
                 rate.getOriginProvince(), rate.getOriginCity(),
                 rate.getDestinationProvince(), rate.getDestinationCity(),
                 rate.getDestinationBarangay(),
                 rate.getServiceType(), rate.getBagSize(),
-                weight, shippingFee, itemFee, total
+                weight, shippingFee, itemFee, valuationFee, codFee, codFeeWithVat, total
         );
     }
 }

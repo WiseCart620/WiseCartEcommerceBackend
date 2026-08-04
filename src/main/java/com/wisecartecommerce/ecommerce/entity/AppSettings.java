@@ -60,6 +60,26 @@ public class AppSettings {
     @Column(name = "jnt_origin_city")
     private String jntOriginCity;
 
+    @Column(name = "jnt_cod_fee_rate", precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal jntCodFeeRate = new BigDecimal("0.0275"); // 2.75%
+
+    @Column(name = "jnt_valuation_fee_rate", precision = 6, scale = 4)
+    @Builder.Default
+    private BigDecimal jntValuationFeeRate = new BigDecimal("0.01"); // 1%
+
+    @Column(name = "jnt_valuation_fee_minimum", precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal jntValuationFeeMinimum = new BigDecimal("5");
+
+    @Column(name = "jnt_overweight_rate_per_kg", precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal jntOverweightRatePerKg = new BigDecimal("70");
+
+    @Column(name = "jnt_overweight_base_fee", precision = 10, scale = 2)
+    @Builder.Default
+    private BigDecimal jntOverweightBaseFee = new BigDecimal("15");
+
     @Column(name = "flash_enabled", nullable = false)
     @Builder.Default
     private boolean flashEnabled = true;

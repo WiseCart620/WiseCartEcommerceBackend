@@ -86,7 +86,6 @@ public class ShippingController {
     @Operation(summary = "Estimate J&T Express shipping fee using configured rate table")
     public ResponseEntity<ApiResponse<com.wisecartecommerce.ecommerce.Dto.Response.JntEstimateResponse>> estimateJnt(
             @RequestBody com.wisecartecommerce.ecommerce.Dto.Request.JntEstimateRequest req) {
-
         com.wisecartecommerce.ecommerce.entity.AppSettings settings = appSettingsRepository.findAll().stream().findFirst().orElse(null);
         String originProvince = settings != null && settings.getJntOriginProvince() != null
                 && !settings.getJntOriginProvince().isBlank()

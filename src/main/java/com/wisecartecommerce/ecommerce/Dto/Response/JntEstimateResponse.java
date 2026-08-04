@@ -10,6 +10,7 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class JntEstimateResponse {
+
     private String originProvince;
     private String originCity;
     private String destinationProvince;
@@ -20,5 +21,8 @@ public class JntEstimateResponse {
     private BigDecimal weightKg;
     private BigDecimal shippingFee;
     private BigDecimal itemAdditionalFee;
+    private BigDecimal valuationFee;
+    private BigDecimal codFee;
+    private BigDecimal codFeeWithVat;
     private BigDecimal totalAmount;
 }
