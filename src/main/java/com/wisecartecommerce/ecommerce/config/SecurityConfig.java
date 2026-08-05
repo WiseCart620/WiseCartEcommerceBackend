@@ -42,7 +42,7 @@ public class SecurityConfig {
                         "/auth/forgot-password", "/api/auth/forgot-password",
                         "/auth/reset-password", "/api/auth/reset-password",
                         "/auth/verify-email", "/api/auth/verify-email",
-        "/auth/social-login", "/api/auth/social-login")
+                        "/auth/social-login", "/api/auth/social-login")
                 .permitAll()
                 // Category public endpoints
                 .requestMatchers(
@@ -55,7 +55,9 @@ public class SecurityConfig {
                 .permitAll()
                 .requestMatchers(
                         "/customer/shipping/estimate/**",
-                        "/api/customer/shipping/estimate/**")
+                        "/api/customer/shipping/estimate/**",
+                        "/customer/shipping/jnt/estimate",
+                        "/api/customer/shipping/jnt/estimate")
                 .permitAll()
                 .requestMatchers(HttpMethod.GET,
                         "/customer/orders/*/track",
@@ -101,7 +103,7 @@ public class SecurityConfig {
                         "/files/delete", "/api/files/delete")
                 .authenticated()
                 .anyRequest().authenticated()
-        )
+                )
                 .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authenticationProvider(authenticationProvider)
