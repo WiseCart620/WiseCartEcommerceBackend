@@ -31,7 +31,8 @@ public class GuestEmailVerification {
     private String couponCode;
 
     @Enumerated(jakarta.persistence.EnumType.STRING)
-    @Column(nullable = false)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(nullable = false, length = 30)
     @Builder.Default
     private OtpPurpose purpose = OtpPurpose.GUEST_CHECKOUT;
 
