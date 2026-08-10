@@ -34,6 +34,14 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.success("Verification code sent", null));
     }
 
+    @PostMapping("/verify-signup-otp")
+    @Operation(summary = "Verify the signup code before continuing to the password step")
+    public ResponseEntity<ApiResponse<Void>> verifySignupOtp(
+            @RequestParam String email, @RequestParam String otp) {
+        authService.verifySignupOtp(email, otp);
+        return ResponseEntity.ok(ApiResponse.success("Email verified", null));
+    }
+
     @PostMapping("/register")
     @Operation(summary = "Register a new user")
     public ResponseEntity<ApiResponse<AuthenticationResponse>> register(

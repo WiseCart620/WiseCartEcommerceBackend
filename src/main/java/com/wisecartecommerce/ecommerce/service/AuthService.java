@@ -30,4 +30,6 @@ public interface AuthService {
     boolean validateToken(String token);
 
     AuthenticationResponse socialLogin(Map<String, String> request);
+
+    void verifySignupOtp(String email, String otp);
 }

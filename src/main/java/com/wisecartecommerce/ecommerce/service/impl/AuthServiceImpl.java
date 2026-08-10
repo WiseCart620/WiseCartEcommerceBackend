@@ -59,6 +59,12 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
+    public void verifySignupOtp(String email, String otp) {
+        emailVerificationService.verifyOtp(email, otp,
+                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.SIGNUP);
+    }
+
+    @Override
     @Transactional
     public AuthenticationResponse register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
@@ -69,8 +75,10 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("Phone number already registered");
         }
 
-        emailVerificationService.verifyOtp(request.getEmail(), request.getOtp(),
-                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.SIGNUP);
+        if (!emailVerificationService.isEmailVerifiedRecently(request.getEmail(),
+                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.SIGNUP)) {
+            throw new CustomException("Please verify your email before completing registration.");
+        }
 
         User user = User.builder()
                 .email(request.getEmail())
