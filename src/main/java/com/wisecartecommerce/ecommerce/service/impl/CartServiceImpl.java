@@ -711,6 +711,8 @@ public class CartServiceImpl implements CartService {
         }
 
         userCart.calculateTotals();
+        applyEligibleAutomaticCoupons(userCart);
+        userCart.calculateTotals();
         Cart savedCart = cartRepository.save(userCart);
         return mapToCartResponse(savedCart);
     }
@@ -1082,7 +1084,6 @@ public class CartServiceImpl implements CartService {
                 variationName = null;
             }
         }
-
 
         String addonVariationName = null;
         if (cartItem.isAddon()) {

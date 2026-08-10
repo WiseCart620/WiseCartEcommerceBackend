@@ -30,7 +30,7 @@ public class GuestEmailVerificationService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int OTP_LENGTH = 6;
     private static final int OTP_TTL_MINUTES = 10;
-    private static final int RESEND_COOLDOWN_SECONDS = 45;
+    private static final int RESEND_COOLDOWN_SECONDS = 300;
     private static final int MAX_ATTEMPTS = 5;
     private static final int VERIFICATION_VALID_MINUTES = 30;
 

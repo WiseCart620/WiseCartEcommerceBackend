@@ -129,8 +129,14 @@ public class CouponService {
 
     public java.util.List<CouponResponse> getEligibleAutomaticCoupons(
             java.math.BigDecimal subtotal) {
+        return getEligibleAutomaticCoupons(subtotal, false);
+    }
+
+    public java.util.List<CouponResponse> getEligibleAutomaticCoupons(
+            java.math.BigDecimal subtotal, boolean guestCheckout) {
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         return couponRepository.findByIsActiveTrueAndIsAutomaticTrue().stream()
+                .filter(c -> !guestCheckout || Boolean.TRUE.equals(c.getAllowGuestCheckout()))
                 .filter(c -> c.getStartDate() == null || !now.isBefore(c.getStartDate()))
                 .filter(c -> c.getExpirationDate() == null || !now.isAfter(c.getExpirationDate()))
                 .filter(c -> c.getMinimumPurchaseAmount() == null
