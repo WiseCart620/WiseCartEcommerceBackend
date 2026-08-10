@@ -27,6 +27,13 @@ public class AuthController {
 
     private final AuthService authService;
 
+    @PostMapping("/send-signup-otp")
+    @Operation(summary = "Send a verification code before completing registration")
+    public ResponseEntity<ApiResponse<Void>> sendSignupOtp(@RequestParam String email) {
+        authService.sendSignupOtp(email);
+        return ResponseEntity.ok(ApiResponse.success("Verification code sent", null));
+    }
+
     @PostMapping("/register")
     @Operation(summary = "Register a new user")
     public ResponseEntity<ApiResponse<AuthenticationResponse>> register(

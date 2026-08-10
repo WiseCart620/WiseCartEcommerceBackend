@@ -22,6 +22,8 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
 
     List<Coupon> findByIsActiveTrueAndIsAutomaticTrue();
 
+    List<Coupon> findByIsActiveTrueAndIsAutomaticTrueAndAllowGuestCheckoutTrue();
+
     Page<Coupon> findByCodeContainingIgnoreCaseOrDescriptionContainingIgnoreCase(
             String code, String description, Pageable pageable);
 }

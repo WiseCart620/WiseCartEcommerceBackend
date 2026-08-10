@@ -51,6 +51,12 @@ public class Order {
     private String guestLastName;
     private String guestPhone;
 
+    @Column(name = "guest_ip_address")
+    private String guestIpAddress;
+
+    @Column(name = "guest_email_normalized")
+    private String guestEmailNormalized;
+
     @Column(name = "maya_payment_method")
     private String mayaPaymentMethod;
 

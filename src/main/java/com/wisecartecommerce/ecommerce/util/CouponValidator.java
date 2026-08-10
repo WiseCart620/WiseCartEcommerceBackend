@@ -13,6 +13,7 @@ import com.wisecartecommerce.ecommerce.entity.Coupon;
 import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.repository.CouponRepository;
 import com.wisecartecommerce.ecommerce.repository.CouponUsageRepository;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 
 import lombok.RequiredArgsConstructor;
 
@@ -22,6 +23,7 @@ public class CouponValidator {
 
     private final CouponRepository couponRepository;
     private final CouponUsageRepository couponUsageRepository;
+    private final OrderRepository orderRepository;
 
     /**
      * Validates a coupon code against the given subtotal and cart items. Pass
@@ -91,6 +93,16 @@ public class CouponValidator {
 
     public CouponValidationResult validate(String couponCode, BigDecimal subtotal,
             Long userId, List<CartItem> cartItems) {
+        return validate(couponCode, subtotal, userId, cartItems, null);
+    }
+
+    public CouponValidationResult validate(String couponCode, BigDecimal subtotal,
+            Long userId, List<CartItem> cartItems, String guestEmail) {
+        return validate(couponCode, subtotal, userId, cartItems, guestEmail, null);
+    }
+
+    public CouponValidationResult validate(String couponCode, BigDecimal subtotal,
+            Long userId, List<CartItem> cartItems, String guestEmail, String guestIp) {
         if (couponCode == null || couponCode.isBlank()) {
             throw new CustomException("Coupon code is required");
         }
@@ -98,6 +110,31 @@ public class CouponValidator {
         Coupon coupon = couponRepository.findByCodeAndIsActiveTrue(couponCode.toUpperCase())
                 .orElseThrow(() -> new CustomException(
                 "Coupon code '" + couponCode + "' is invalid or inactive"));
+
+        // ── Guest-specific checks ────────────────────────────────────────────
+        if (userId == null) {
+            if (!Boolean.TRUE.equals(coupon.getAllowGuestCheckout())) {
+                throw new CustomException(
+                        "Coupon '" + couponCode + "' is not available for guest checkout. Please sign in to use it.");
+            }
+            if (coupon.getMaxUsagePerUser() != null && guestEmail != null && !guestEmail.isBlank()) {
+                String normalizedGuestEmail = com.wisecartecommerce.ecommerce.util.EmailNormalizer.normalize(guestEmail);
+                Long used = orderRepository.countByGuestEmailAndCouponCode(normalizedGuestEmail, coupon.getCode());
+                if (used != null && used >= coupon.getMaxUsagePerUser()) {
+                    throw new CustomException(
+                            "You have already used this coupon the maximum number of times");
+                }
+            }
+            if (coupon.getMaxUsagePerUser() != null && guestIp != null && !guestIp.isBlank()) {
+                LocalDateTime since = LocalDateTime.now().minusHours(24);
+                Long usedFromIp = orderRepository.countByGuestIpAndCouponCodeSince(
+                        guestIp, coupon.getCode(), since);
+                if (usedFromIp != null && usedFromIp >= coupon.getMaxUsagePerUser()) {
+                    throw new CustomException(
+                            "This coupon has already been used the maximum number of times from this network recently. Please try again later.");
+                }
+            }
+        }
 
         LocalDateTime now = LocalDateTime.now();
 

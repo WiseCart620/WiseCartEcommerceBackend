@@ -58,6 +58,14 @@ public class RateLimitService {
                 .build());
     }
 
+    // 5 OTP requests per 10 minutes per normalized email — loose enough to allow
+    // a resend or two, tight enough to block scripted OTP-spam / bounce farming
+    public Bucket otpBucket(String email) {
+        return buckets.get("otp:" + email, k -> Bucket.builder()
+                .addLimit(Bandwidth.classic(5, Refill.intervally(5, Duration.ofMinutes(10))))
+                .build());
+    }
+
     public boolean tryConsume(Bucket bucket) {
         return bucket.tryConsume(1);
     }

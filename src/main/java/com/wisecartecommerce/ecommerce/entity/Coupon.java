@@ -64,6 +64,10 @@ public class Coupon {
     @Builder.Default
     private Boolean isAutomatic = false;
 
+    @Column(name = "allow_guest_checkout", nullable = false)
+    @Builder.Default
+    private Boolean allowGuestCheckout = false;
+
     @Column(name = "shipping_discount_percent")
     @Builder.Default
     private Integer shippingDiscountPercent = 100;

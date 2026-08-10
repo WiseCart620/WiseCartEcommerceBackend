@@ -59,6 +59,9 @@ public class CouponRequest {
     @Builder.Default
     private Boolean automatic = false;
 
+    @Builder.Default
+    private Boolean allowGuestCheckout = false;
+
     @AssertTrue(message = "Discount value must be greater than 0")
     public boolean isDiscountValueValid() {
         if (type == Coupon.CouponType.FREE_SHIPPING) {

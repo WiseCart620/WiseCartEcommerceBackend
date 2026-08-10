@@ -44,6 +44,19 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final EmailService emailService;
     private final com.wisecartecommerce.ecommerce.util.UserMapper userMapper;
+    private final com.wisecartecommerce.ecommerce.service.GuestEmailVerificationService emailVerificationService;
+
+    @Override
+    public void sendSignupOtp(String email) {
+        if (email == null || email.isBlank()) {
+            throw new CustomException("Email is required");
+        }
+        if (userRepository.existsByEmail(email)) {
+            throw new CustomException("Email already registered");
+        }
+        emailVerificationService.sendOtp(email, null,
+                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.SIGNUP);
+    }
 
     @Override
     @Transactional
@@ -56,6 +69,9 @@ public class AuthServiceImpl implements AuthService {
             throw new CustomException("Phone number already registered");
         }
 
+        emailVerificationService.verifyOtp(request.getEmail(), request.getOtp(),
+                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.SIGNUP);
+
         User user = User.builder()
                 .email(request.getEmail())
                 .password(passwordEncoder.encode(request.getPassword()))
@@ -64,12 +80,12 @@ public class AuthServiceImpl implements AuthService {
                 .phone(request.getPhone())
                 .role(Role.CUSTOMER)
                 .verificationToken(UUID.randomUUID().toString())
-                .emailVerified(false)
+                .emailVerified(true) // OTP already proved they own this inbox
                 .enabled(true)
                 .build();
 
         User savedUser = userRepository.save(user);
-        emailService.sendVerificationEmail(savedUser);
+        emailService.sendWelcomeEmail(savedUser);
 
         String accessToken = jwtService.generateToken(savedUser);
         String refreshToken = jwtService.generateRefreshToken(savedUser);

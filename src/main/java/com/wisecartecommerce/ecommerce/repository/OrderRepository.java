@@ -160,6 +160,18 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumberAndGuestEmail(String orderNumber, String guestEmail);
 
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.guestEmailNormalized = :guestEmailNormalized "
+            + "AND o.couponCode = :couponCode AND o.status <> com.wisecartecommerce.ecommerce.util.OrderStatus.CANCELLED")
+    Long countByGuestEmailAndCouponCode(@Param("guestEmailNormalized") String guestEmailNormalized,
+            @Param("couponCode") String couponCode);
+
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.guestIpAddress = :ip "
+            + "AND o.couponCode = :couponCode AND o.status <> com.wisecartecommerce.ecommerce.util.OrderStatus.CANCELLED "
+            + "AND o.createdAt >= :since")
+    Long countByGuestIpAndCouponCodeSince(@Param("ip") String ip,
+            @Param("couponCode") String couponCode,
+            @Param("since") LocalDateTime since);
+
     @Query(value = """
                         SELECT
                             COALESCE(o.guest_email, u.email)                           AS email,

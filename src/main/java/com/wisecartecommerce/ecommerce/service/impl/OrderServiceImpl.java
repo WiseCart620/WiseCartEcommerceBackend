@@ -93,6 +93,8 @@ public class OrderServiceImpl implements OrderService {
     private final RateLimitService rateLimitService;
     private final AppSettingsRepository appSettingsRepository;
     private final com.wisecartecommerce.ecommerce.service.JntShippingService jntShippingService;
+    private final jakarta.servlet.http.HttpServletRequest httpServletRequest;
+    private final com.wisecartecommerce.ecommerce.service.GuestEmailVerificationService guestEmailVerificationService;
 
     // ── Constants ──────────────────────────────────────────────────────────────
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
@@ -597,21 +599,50 @@ public class OrderServiceImpl implements OrderService {
                 .map(OrderItem::getSubtotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // ── Coupon validation ─────────────────────────────────────────────────
+// ── Coupon validation (manual code, if provided) ───────────────────────
         String couponCode = request.getCouponCode();
         BigDecimal discountAmount = BigDecimal.ZERO;
         boolean couponFreeShipping = false;
         CouponValidationResult couponResult = null;
 
+        String guestIp = extractClientIp();
+
         if (couponCode != null && !couponCode.isBlank()) {
             try {
-                couponResult = couponValidator.validate(couponCode, subtotal, null, cartItemsForValidation);
+                couponResult = couponValidator.validate(
+                        couponCode, subtotal, null, cartItemsForValidation, request.getGuestEmail(), guestIp);
                 discountAmount = couponResult.getDiscountAmount();
                 couponFreeShipping = couponResult.isFreeShipping();
                 log.info("Guest coupon '{}' applied: ₱{} discount", couponCode, discountAmount);
             } catch (CustomException e) {
                 throw new CustomException("Coupon error: " + e.getMessage());
             }
+        }
+
+        // ── Automatic coupons eligible for guest checkout ──────────────────────
+        List<CouponValidationResult> autoCouponResults = applyEligibleGuestAutomaticCoupons(
+                subtotal, cartItemsForValidation, request.getGuestEmail(),
+                couponResult != null ? couponResult.getCoupon().getCode() : null);
+
+        for (CouponValidationResult autoResult : autoCouponResults) {
+            discountAmount = discountAmount.add(autoResult.getDiscountAmount());
+            if (autoResult.isFreeShipping()) {
+                couponFreeShipping = true;
+            }
+            log.info("Guest automatic coupon '{}' applied: ₱{} discount",
+                    autoResult.getCoupon().getCode(), autoResult.getDiscountAmount());
+        }
+        if (discountAmount.compareTo(subtotal) > 0) {
+            discountAmount = subtotal;
+        }
+
+        if (discountAmount.compareTo(BigDecimal.ZERO) > 0
+                && !guestEmailVerificationService.isEmailVerifiedRecently(
+                        request.getGuestEmail(),
+                        com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.GUEST_CHECKOUT)) {
+            throw new CustomException(
+                    "Please verify your email to use this discount. "
+                    + "We'll send a code to " + request.getGuestEmail() + ".");
         }
 
         // ── Shipping calculation ──────────────────────────────────────────────
@@ -680,13 +711,14 @@ public class OrderServiceImpl implements OrderService {
         BigDecimal taxAmount = taxableSubtotal.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
         BigDecimal finalAmount = taxableSubtotal.add(shippingAmount).add(taxAmount);
 
-        // ── Create and save order ─────────────────────────────────────────────
         Order order = Order.builder()
                 .orderNumber(generateOrderNumber())
                 .guestEmail(request.getGuestEmail())
+                .guestEmailNormalized(com.wisecartecommerce.ecommerce.util.EmailNormalizer.normalize(request.getGuestEmail()))
                 .guestFirstName(request.getGuestFirstName())
                 .guestLastName(request.getGuestLastName())
                 .guestPhone(request.getGuestPhone())
+                .guestIpAddress(guestIp)
                 .shippingAddress(shippingAddress)
                 .paymentMethod(request.getPaymentMethod())
                 .couponCode(couponCode)
@@ -739,6 +771,9 @@ public class OrderServiceImpl implements OrderService {
         if (couponResult != null) {
             recordCouponUsage(couponResult.getCoupon(), null, request.getGuestEmail(), saved);
         }
+        for (CouponValidationResult autoResult : autoCouponResults) {
+            recordCouponUsage(autoResult.getCoupon(), null, request.getGuestEmail(), saved);
+        }
 
         try {
             emailService.sendOrderConfirmationEmail(saved);
@@ -760,11 +795,125 @@ public class OrderServiceImpl implements OrderService {
         return mapToGuestOrderResponse(saved);
     }
 
+    private String extractClientIp() {
+        String forwarded = httpServletRequest.getHeader("X-Forwarded-For");
+        if (forwarded != null && !forwarded.isBlank()) {
+            return forwarded.split(",")[0].trim();
+        }
+        return httpServletRequest.getRemoteAddr();
+    }
+
     private int getQuantityForProduct(List<OrderItem> items, Long productId) {
         return items.stream()
                 .filter(item -> item.getProduct().getId().equals(productId) && item.getVariation() == null)
                 .mapToInt(OrderItem::getQuantity)
                 .sum();
+    }
+
+    /**
+     * Finds automatic coupons eligible for a guest checkout. Skips any coupon
+     * not explicitly marked allowGuestCheckout, and skips coupons that have
+     * already hit their per-guest cap for this email (abuse prevention, since
+     * guests have no account to tie usage to).
+     */
+    private List<CouponValidationResult> applyEligibleGuestAutomaticCoupons(
+            BigDecimal subtotal, List<CartItem> cartItems, String guestEmail, String manualCouponCode) {
+
+        List<CouponValidationResult> results = new ArrayList<>();
+        if (subtotal.compareTo(BigDecimal.ZERO) <= 0) {
+            return results;
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        List<Coupon> autoCoupons = couponRepository.findByIsActiveTrueAndIsAutomaticTrueAndAllowGuestCheckoutTrue();
+
+        for (Coupon coupon : autoCoupons) {
+            if (manualCouponCode != null && coupon.getCode().equalsIgnoreCase(manualCouponCode)) {
+                continue; // already applied manually, don't double-apply
+            }
+            if (coupon.getStartDate() != null && now.isBefore(coupon.getStartDate())) {
+                continue;
+            }
+            if (coupon.getExpirationDate() != null && now.isAfter(coupon.getExpirationDate())) {
+                continue;
+            }
+            if (coupon.getMaxUsageCount() != null && coupon.getCurrentUsageCount() >= coupon.getMaxUsageCount()) {
+                continue;
+            }
+            if (coupon.getMinimumPurchaseAmount() != null
+                    && subtotal.compareTo(coupon.getMinimumPurchaseAmount()) < 0) {
+                continue;
+            }
+
+            // ── Abuse prevention: cap per-guest-email usage ────────────────────
+            if (coupon.getMaxUsagePerUser() != null && guestEmail != null && !guestEmail.isBlank()) {
+                Long used = orderRepository.countByGuestEmailAndCouponCode(guestEmail.toLowerCase(), coupon.getCode());
+                if (used != null && used >= coupon.getMaxUsagePerUser()) {
+                    continue;
+                }
+            }
+
+            int minQty = coupon.getMinimumProductQuantity() != null ? coupon.getMinimumProductQuantity() : 0;
+            if (minQty > 0) {
+                java.util.Set<Long> applicable = coupon.getApplicableProducts();
+                int qualifyingQty = cartItems.stream()
+                        .filter(item -> applicable == null || applicable.isEmpty()
+                        || applicable.contains(item.getProduct().getId()))
+                        .mapToInt(CartItem::getQuantity)
+                        .sum();
+                if (qualifyingQty < minQty) {
+                    continue;
+                }
+            }
+
+            if (coupon.getApplicableProducts() != null && !coupon.getApplicableProducts().isEmpty()) {
+                boolean hasApplicable = cartItems.stream()
+                        .anyMatch(item -> coupon.getApplicableProducts().contains(item.getProduct().getId()));
+                if (!hasApplicable) {
+                    continue;
+                }
+            }
+            if (coupon.getApplicableCategories() != null && !coupon.getApplicableCategories().isEmpty()) {
+                boolean hasApplicable = cartItems.stream()
+                        .anyMatch(item -> item.getProduct().getCategory() != null
+                        && coupon.getApplicableCategories().contains(item.getProduct().getCategory().getId()));
+                if (!hasApplicable) {
+                    continue;
+                }
+            }
+
+            // If anything else is already being applied, this one must allow combining
+            if (!results.isEmpty() || manualCouponCode != null) {
+                if (!Boolean.TRUE.equals(coupon.getIsCombinable())) {
+                    continue;
+                }
+            }
+
+            BigDecimal discountAmount = BigDecimal.ZERO;
+            boolean freeShipping = false;
+            switch (coupon.getType()) {
+                case PERCENTAGE -> {
+                    discountAmount = subtotal.multiply(coupon.getDiscountValue())
+                            .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                    if (coupon.getMaximumDiscountAmount() != null
+                            && discountAmount.compareTo(coupon.getMaximumDiscountAmount()) > 0) {
+                        discountAmount = coupon.getMaximumDiscountAmount();
+                    }
+                }
+                case FIXED_AMOUNT ->
+                    discountAmount = coupon.getDiscountValue().min(subtotal);
+                case FREE_SHIPPING ->
+                    freeShipping = true;
+            }
+
+            results.add(CouponValidationResult.builder()
+                    .coupon(coupon)
+                    .discountAmount(discountAmount)
+                    .freeShipping(freeShipping)
+                    .build());
+        }
+
+        return results;
     }
 
     private void recordCouponUsage(Coupon coupon, User user, String guestEmail, Order order) {

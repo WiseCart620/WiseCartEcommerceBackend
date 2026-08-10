@@ -57,8 +57,6 @@ public class EmailService {
     @Value("${app.backend.url:https://backend.wisecart.ph}")
     private String backendUrl;
 
-
-
     @Async
     public void sendVerificationEmail(User user) {
         try {
@@ -212,6 +210,25 @@ public class EmailService {
         } catch (Exception e) {
             log.error("Failed to send admin reply notification to: {}", customerEmail, e);
             // Don't rethrow — reply was already saved to DB, email failure is non-fatal
+        }
+    }
+
+    @Async
+    public void sendOtpEmail(String email, String otp) {
+        try {
+            String content = "<div style=\"font-family:Arial,sans-serif;max-width:480px;margin:0 auto;\">"
+                    + "<h2 style=\"color:#ff6900;\">Verify your email</h2>"
+                    + "<p>Use the code below to verify your email and unlock your discount at checkout:</p>"
+                    + "<p style=\"font-size:32px;font-weight:bold;letter-spacing:6px;text-align:center;"
+                    + "background:#fff4ee;padding:16px;border-radius:8px;color:#333;\">" + otp + "</p>"
+                    + "<p style=\"color:#888;font-size:13px;\">This code expires in 10 minutes. "
+                    + "If you didn't request this, you can safely ignore this email.</p>"
+                    + "</div>";
+            sendEmail(email, "Your verification code: " + otp, content);
+            log.info("OTP email sent to: {}", email);
+        } catch (Exception e) {
+            log.error("Failed to send OTP email to: {}", email, e);
+            throw new RuntimeException("Failed to send verification email: " + e.getMessage());
         }
     }
 
