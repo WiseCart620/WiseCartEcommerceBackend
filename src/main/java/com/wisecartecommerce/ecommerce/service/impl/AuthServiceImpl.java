@@ -261,34 +261,30 @@ public class AuthServiceImpl implements AuthService {
                     "Too many password reset requests. Please wait before trying again.");
         }
 
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new CustomException("User not found with email: " + email));
-
-        String resetToken = UUID.randomUUID().toString();
-        user.setResetToken(resetToken);
-        user.setResetTokenExpiry(LocalDateTime.now().plusHours(24));
-        userRepository.save(user);
-
-        emailService.sendPasswordResetEmail(user, resetToken);
-        log.info("Password reset token generated for user: {}", email);
+        if (userRepository.existsByEmail(email)) {
+            emailVerificationService.sendOtp(email, null,
+                    com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.PASSWORD_RESET);
+            log.info("Password reset OTP sent for: {}", email);
+        } else {
+            log.info("Password reset requested for unknown email: {}", email);
+        }
     }
 
     @Override
     @Transactional
-    public void resetPassword(String token, String newPassword) {
-        User user = userRepository.findByResetToken(token)
-                .orElseThrow(() -> new CustomException("Invalid or expired reset token"));
+    public void resetPassword(String email, String otp, String newPassword) {
+        emailVerificationService.verifyOtp(email, otp,
+                com.wisecartecommerce.ecommerce.entity.GuestEmailVerification.OtpPurpose.PASSWORD_RESET);
 
-        if (user.getResetTokenExpiry().isBefore(LocalDateTime.now())) {
-            throw new CustomException("Reset token has expired");
-        }
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new CustomException("No account found with that email"));
 
         user.setPassword(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
         user.setResetTokenExpiry(null);
         userRepository.save(user);
 
-        log.info("Password reset for user: {}", user.getEmail());
+        log.info("Password reset completed for: {}", email);
     }
 
     @Override

@@ -38,7 +38,8 @@ public class GuestEmailVerification {
 
     public enum OtpPurpose {
         GUEST_CHECKOUT,
-        SIGNUP
+        SIGNUP,
+        PASSWORD_RESET
     }
 
     @Builder.Default

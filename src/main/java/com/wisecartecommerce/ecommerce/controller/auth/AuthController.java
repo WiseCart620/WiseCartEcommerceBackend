@@ -105,11 +105,12 @@ public class AuthController {
     }
 
     @PostMapping("/reset-password")
-    @Operation(summary = "Reset password with token")
+    @Operation(summary = "Reset password using emailed OTP")
     public ResponseEntity<ApiResponse<Void>> resetPassword(
-            @RequestParam String token,
+            @RequestParam String email,
+            @RequestParam String otp,
             @RequestParam String newPassword) {
-        authService.resetPassword(token, newPassword);
+        authService.resetPassword(email, otp, newPassword);
         return ResponseEntity.ok(ApiResponse.success("Password reset successful", null));
     }
 }
