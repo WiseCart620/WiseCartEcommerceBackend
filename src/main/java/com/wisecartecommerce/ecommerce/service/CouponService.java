@@ -134,6 +134,13 @@ public class CouponService {
 
     public java.util.List<CouponResponse> getEligibleAutomaticCoupons(
             java.math.BigDecimal subtotal, boolean guestCheckout) {
+        return getEligibleAutomaticCoupons(subtotal, guestCheckout, null, null, null);
+    }
+
+    public java.util.List<CouponResponse> getEligibleAutomaticCoupons(
+            java.math.BigDecimal subtotal, boolean guestCheckout,
+            java.util.List<Long> cartProductIds, java.util.List<Long> cartCategoryIds,
+            java.util.Map<Long, Integer> productQuantities) {
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
         return couponRepository.findByIsActiveTrueAndIsAutomaticTrue().stream()
                 .filter(c -> !guestCheckout || Boolean.TRUE.equals(c.getAllowGuestCheckout()))
@@ -141,6 +148,34 @@ public class CouponService {
                 .filter(c -> c.getExpirationDate() == null || !now.isAfter(c.getExpirationDate()))
                 .filter(c -> c.getMinimumPurchaseAmount() == null
                 || subtotal.compareTo(c.getMinimumPurchaseAmount()) >= 0)
+                .filter(c -> {
+                    if (c.getApplicableProducts() != null && !c.getApplicableProducts().isEmpty()) {
+                        boolean hasMatch = cartProductIds != null
+                                && cartProductIds.stream().anyMatch(c.getApplicableProducts()::contains);
+                        if (!hasMatch) {
+                            return false;
+                        }
+                    }
+                    if (c.getApplicableCategories() != null && !c.getApplicableCategories().isEmpty()) {
+                        boolean hasMatch = cartCategoryIds != null
+                                && cartCategoryIds.stream().anyMatch(c.getApplicableCategories()::contains);
+                        if (!hasMatch) {
+                            return false;
+                        }
+                    }
+                    int minQty = c.getMinimumProductQuantity() != null ? c.getMinimumProductQuantity() : 0;
+                    if (minQty > 0 && productQuantities != null) {
+                        java.util.Set<Long> applicable = c.getApplicableProducts();
+                        int qualifyingQty = productQuantities.entrySet().stream()
+                                .filter(e -> applicable == null || applicable.isEmpty() || applicable.contains(e.getKey()))
+                                .mapToInt(java.util.Map.Entry::getValue)
+                                .sum();
+                        if (qualifyingQty < minQty) {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
                 .map(this::toResponse)
                 .toList();
     }

@@ -1,11 +1,11 @@
 package com.wisecartecommerce.ecommerce.controller.publicapi;
 
-import java.math.BigDecimal;
 import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.wisecartecommerce.ecommerce.Dto.Request.AutomaticCouponsRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.ApiResponse;
 import com.wisecartecommerce.ecommerce.Dto.Response.CouponResponse;
 import com.wisecartecommerce.ecommerce.service.CouponService;
@@ -19,10 +19,12 @@ public class PublicCouponController {
 
     private final CouponService couponService;
 
-    @GetMapping("/automatic")
+    @PostMapping("/automatic")
     public ResponseEntity<ApiResponse<List<CouponResponse>>> getAutomaticCoupons(
-            @RequestParam BigDecimal subtotal) {
-        List<CouponResponse> coupons = couponService.getEligibleAutomaticCoupons(subtotal, true);
+            @RequestBody AutomaticCouponsRequest request) {
+        List<CouponResponse> coupons = couponService.getEligibleAutomaticCoupons(
+                request.getSubtotal(), true,
+                request.getProductIds(), request.getCategoryIds(), request.getProductQuantities());
         return ResponseEntity.ok(ApiResponse.success("Automatic coupons retrieved", coupons));
     }
 }
