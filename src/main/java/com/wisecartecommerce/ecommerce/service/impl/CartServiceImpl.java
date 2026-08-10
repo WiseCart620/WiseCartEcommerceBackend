@@ -198,7 +198,7 @@ public class CartServiceImpl implements CartService {
             for (String code : cart.getCouponCodes()) {
                 Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
                 if (c != null) {
-                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
+                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart));
                 }
             }
             if (totalDiscount.compareTo(cart.getSubtotal()) > 0) {
@@ -576,7 +576,7 @@ public class CartServiceImpl implements CartService {
             for (String code : cart.getCouponCodes()) {
                 Coupon c = couponRepository.findByCodeAndIsActiveTrue(code).orElse(null);
                 if (c != null) {
-                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart.getSubtotal()));
+                    totalDiscount = totalDiscount.add(calculateDiscount(c, cart));
                 }
             }
             if (totalDiscount.compareTo(cart.getSubtotal()) > 0) {
@@ -591,15 +591,16 @@ public class CartServiceImpl implements CartService {
         return mapToCartResponse(savedCart);
     }
 
-    private BigDecimal calculateDiscount(Coupon coupon, BigDecimal subtotal) {
+    private BigDecimal calculateDiscount(Coupon coupon, Cart cart) {
+        BigDecimal qualifyingSubtotal = getQualifyingSubtotal(cart, coupon);
         return switch (coupon.getType()) {
             case PERCENTAGE -> {
-                BigDecimal d = subtotal.multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal d = qualifyingSubtotal.multiply(coupon.getDiscountValue()).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 yield coupon.getMaximumDiscountAmount() != null && d.compareTo(coupon.getMaximumDiscountAmount()) > 0
                 ? coupon.getMaximumDiscountAmount() : d;
             }
             case FIXED_AMOUNT ->
-                coupon.getDiscountValue().min(subtotal);
+                coupon.getDiscountValue().min(qualifyingSubtotal);
             case FREE_SHIPPING ->
                 BigDecimal.ZERO;
         };
@@ -998,12 +999,42 @@ public class CartServiceImpl implements CartService {
         applyCouponToCart(cart, coupon);
     }
 
+    private BigDecimal getQualifyingSubtotal(Cart cart, Coupon coupon) {
+        java.util.Set<Long> applicableProducts = coupon.getApplicableProducts();
+        java.util.Set<Long> applicableCategories = coupon.getApplicableCategories();
+        boolean hasProductRestriction = applicableProducts != null && !applicableProducts.isEmpty();
+        boolean hasCategoryRestriction = applicableCategories != null && !applicableCategories.isEmpty();
+
+        if (!hasProductRestriction && !hasCategoryRestriction) {
+            return cart.getSubtotal();
+        }
+
+        return cart.getItems().stream()
+                .filter(item -> {
+                    boolean productMatch = hasProductRestriction
+                            && applicableProducts.contains(item.getProduct().getId());
+                    boolean categoryMatch = hasCategoryRestriction
+                            && item.getProduct().getCategory() != null
+                            && applicableCategories.contains(item.getProduct().getCategory().getId());
+                    if (hasProductRestriction && hasCategoryRestriction) {
+                        return productMatch || categoryMatch;
+                    } else if (hasProductRestriction) {
+                        return productMatch;
+                    } else {
+                        return categoryMatch;
+                    }
+                })
+                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private void applyCouponToCart(Cart cart, Coupon coupon) {
+        BigDecimal qualifyingSubtotal = getQualifyingSubtotal(cart, coupon);
         BigDecimal discountAmount = BigDecimal.ZERO;
 
         switch (coupon.getType()) {
             case PERCENTAGE:
-                discountAmount = cart.getSubtotal()
+                discountAmount = qualifyingSubtotal
                         .multiply(coupon.getDiscountValue().divide(BigDecimal.valueOf(100)));
                 if (coupon.getMaximumDiscountAmount() != null
                         && discountAmount.compareTo(coupon.getMaximumDiscountAmount()) > 0) {
@@ -1012,8 +1043,8 @@ public class CartServiceImpl implements CartService {
                 break;
             case FIXED_AMOUNT:
                 discountAmount = coupon.getDiscountValue();
-                if (discountAmount.compareTo(cart.getSubtotal()) > 0) {
-                    discountAmount = cart.getSubtotal();
+                if (discountAmount.compareTo(qualifyingSubtotal) > 0) {
+                    discountAmount = qualifyingSubtotal;
                 }
                 break;
             case FREE_SHIPPING:

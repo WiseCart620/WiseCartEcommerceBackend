@@ -96,6 +96,35 @@ public class CouponValidator {
         return validate(couponCode, subtotal, userId, cartItems, null);
     }
 
+    private BigDecimal getQualifyingSubtotal(BigDecimal subtotal, Coupon coupon, List<CartItem> cartItems) {
+        Set<Long> applicableProducts = coupon.getApplicableProducts();
+        Set<Long> applicableCategories = coupon.getApplicableCategories();
+        boolean hasProductRestriction = applicableProducts != null && !applicableProducts.isEmpty();
+        boolean hasCategoryRestriction = applicableCategories != null && !applicableCategories.isEmpty();
+
+        if ((!hasProductRestriction && !hasCategoryRestriction) || cartItems == null || cartItems.isEmpty()) {
+            return subtotal;
+        }
+
+        return cartItems.stream()
+                .filter(item -> {
+                    boolean productMatch = hasProductRestriction
+                            && applicableProducts.contains(item.getProduct().getId());
+                    boolean categoryMatch = hasCategoryRestriction
+                            && item.getProduct().getCategory() != null
+                            && applicableCategories.contains(item.getProduct().getCategory().getId());
+                    if (hasProductRestriction && hasCategoryRestriction) {
+                        return productMatch || categoryMatch;
+                    } else if (hasProductRestriction) {
+                        return productMatch;
+                    } else {
+                        return categoryMatch;
+                    }
+                })
+                .map(item -> item.getPrice().multiply(BigDecimal.valueOf(item.getQuantity())))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     public CouponValidationResult validate(String couponCode, BigDecimal subtotal,
             Long userId, List<CartItem> cartItems, String guestEmail) {
         return validate(couponCode, subtotal, userId, cartItems, guestEmail, null);
@@ -182,13 +211,14 @@ public class CouponValidator {
             }
         }
 
-        // Calculate discount
+// Calculate discount — only against items the coupon actually applies to
+        BigDecimal qualifyingSubtotal = getQualifyingSubtotal(subtotal, coupon, cartItems);
         BigDecimal discountAmount = BigDecimal.ZERO;
         boolean freeShipping = false;
 
         switch (coupon.getType()) {
             case PERCENTAGE -> {
-                discountAmount = subtotal
+                discountAmount = qualifyingSubtotal
                         .multiply(coupon.getDiscountValue())
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 if (coupon.getMaximumDiscountAmount() != null
@@ -197,7 +227,7 @@ public class CouponValidator {
                 }
             }
             case FIXED_AMOUNT -> {
-                discountAmount = coupon.getDiscountValue().min(subtotal);
+                discountAmount = coupon.getDiscountValue().min(qualifyingSubtotal);
             }
             case FREE_SHIPPING -> {
                 freeShipping = true;
