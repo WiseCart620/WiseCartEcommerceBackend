@@ -50,6 +50,8 @@ public class PublicOrderController {
     private final OrderRepository orderRepository;
     private final PaymentRepository paymentRepository;
     private final MayaService mayaService;
+    private final com.wisecartecommerce.ecommerce.repository.ProductRepository productRepository;
+    private final com.wisecartecommerce.ecommerce.repository.ProductVariationRepository productVariationRepository;
 
     @PostMapping("/guest")
     @Operation(summary = "Place order as guest")
@@ -85,20 +87,33 @@ public class PublicOrderController {
                 if (raw instanceof Map<?, ?> m) {
                     Long productId = Long.parseLong(m.get("productId").toString());
                     int quantity = Integer.parseInt(m.get("quantity").toString());
-                    Product p = new Product();
-                    p.setId(productId);
+
+                    Product product = productRepository.findById(productId).orElse(null);
+                    if (product == null) {
+                        continue;
+                    }
+
                     CartItem ci = new CartItem();
-                    ci.setProduct(p);
+                    ci.setProduct(product);
                     ci.setQuantity(quantity);
+
+                    BigDecimal price = product.getDiscountedPrice() != null
+                            ? product.getDiscountedPrice()
+                            : product.getPrice();
 
                     if (m.containsKey("variationId") && m.get("variationId") != null) {
                         Long variationId = Long.parseLong(m.get("variationId").toString());
                         com.wisecartecommerce.ecommerce.entity.ProductVariation variation
-                                = new com.wisecartecommerce.ecommerce.entity.ProductVariation();
-                        variation.setId(variationId);
-                        ci.setVariation(variation);
+                                = productVariationRepository.findById(variationId).orElse(null);
+                        if (variation != null) {
+                            ci.setVariation(variation);
+                            price = variation.getDiscountedPrice() != null
+                                    ? variation.getDiscountedPrice()
+                                    : variation.getPrice();
+                        }
                     }
 
+                    ci.setPrice(price != null ? price : BigDecimal.ZERO);
                     cartItems.add(ci);
                 }
             }
