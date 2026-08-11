@@ -24,6 +24,10 @@ public interface ProductService {
 
     ProductResponse getProductBySku(String sku);
 
+    ProductResponse reorderImages(Long productId, List<Long> orderedImageIds);
+
+    ProductResponse updateDisplayOrder(Long id, Integer displayOrder);
+
     List<ProductResponse> searchProductsForAdmin(String query, int limit);
 
     Page<ProductResponse> getAllProducts(Pageable pageable, Long categoryId, Boolean active, String search);
@@ -97,7 +101,7 @@ public interface ProductService {
     void processDescriptionImages(Long productId, String description);
 
     List<ProductImage> getDescriptionImages(Long productId);
-    
+
     // ADD THIS NEW METHOD
     List<DescriptionImageResponse> getDescriptionImageResponses(Long productId);
 }

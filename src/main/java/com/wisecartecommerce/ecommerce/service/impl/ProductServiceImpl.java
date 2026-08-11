@@ -274,6 +274,17 @@ public class ProductServiceImpl implements ProductService {
         return UUID.randomUUID().toString() + extension;
     }
 
+    @Override
+    @Transactional
+    @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
+    public ProductResponse updateDisplayOrder(Long id, Integer displayOrder) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        product.setDisplayOrder(displayOrder != null ? displayOrder : 0);
+        Product updated = productRepository.save(product);
+        return mapToResponse(updated);
+    }
+
     // ── Update / Delete ───────────────────────────────────────────────────────
     @Override
     @Transactional
@@ -306,6 +317,9 @@ public class ProductServiceImpl implements ProductService {
         product.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
         product.setLabel(labelsToString(request.getLabels()));
         product.setActive(request.isActive());
+        if (request.getDisplayOrder() != null) {
+            product.setDisplayOrder(request.getDisplayOrder());
+        }
 
         if (request.getLazadaUrl() != null) {
             product.setLazadaUrl(request.getLazadaUrl());
@@ -697,9 +711,43 @@ public class ProductServiceImpl implements ProductService {
     @Transactional(readOnly = true)
     public Page<ProductResponse> getActiveProducts(Pageable pageable, Long categoryId,
             BigDecimal minPrice, BigDecimal maxPrice, String search, Boolean inStock, Boolean onSale) {
-        Page<Product> products = productRepository.findActiveProductsWithFilters(
-                categoryId, minPrice, maxPrice, search, inStock, onSale, pageable);
+        boolean useDefaultOrder = pageable.getSort().getOrderFor("createdAt") != null
+                && pageable.getSort().getOrderFor("createdAt").isDescending();
+        Page<Product> products = useDefaultOrder
+                ? productRepository.findActiveProductsWithFiltersDefaultOrder(
+                        categoryId, minPrice, maxPrice, search, inStock, onSale, pageable)
+                : productRepository.findActiveProductsWithFilters(
+                        categoryId, minPrice, maxPrice, search, inStock, onSale, pageable);
         return products.map(this::mapToResponse);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = {"products", "activeProducts", "featuredProducts", "newArrivals", "topSelling"}, allEntries = true)
+    public ProductResponse reorderImages(Long productId, List<Long> orderedImageIds) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+
+        Map<Long, ProductImage> byId = product.getGalleryImages().stream()
+                .collect(Collectors.toMap(ProductImage::getId, img -> img));
+
+        int order = 0;
+        for (Long imageId : orderedImageIds) {
+            ProductImage img = byId.get(imageId);
+            if (img == null) {
+                continue; // ignore ids that don't belong to this product's gallery
+            }
+            img.setDisplayOrder(order);
+            img.setPrimary(order == 0);
+            if (order == 0) {
+                product.setImageUrl(img.getImageUrl());
+            }
+            order++;
+        }
+
+        Product saved = productRepository.save(product);
+        log.info("Reordered {} images for product ID: {}", orderedImageIds.size(), productId);
+        return mapToResponse(saved);
     }
 
     @Override

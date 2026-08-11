@@ -167,6 +167,24 @@ public class AdminProductController {
         return ResponseEntity.ok(ApiResponse.success("Image deleted successfully", null));
     }
 
+    @PatchMapping("/{id}/order")
+    @Operation(summary = "Update product display order")
+    public ResponseEntity<ApiResponse<ProductResponse>> updateDisplayOrder(
+            @PathVariable Long id,
+            @RequestParam Integer displayOrder) {
+        ProductResponse response = productService.updateDisplayOrder(id, displayOrder);
+        return ResponseEntity.ok(ApiResponse.success("Display order updated", response));
+    }
+
+    @PatchMapping("/{productId}/images/reorder")
+    @Operation(summary = "Reorder product gallery images")
+    public ResponseEntity<ApiResponse<ProductResponse>> reorderImages(
+            @PathVariable Long productId,
+            @RequestBody List<Long> orderedImageIds) {
+        ProductResponse response = productService.reorderImages(productId, orderedImageIds);
+        return ResponseEntity.ok(ApiResponse.success("Images reordered", response));
+    }
+
     @PatchMapping("/{id}/stock")
     @Operation(summary = "Update product stock")
     public ResponseEntity<ApiResponse<ProductResponse>> updateStock(

@@ -120,4 +120,27 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
             + "LOWER(p.description) LIKE LOWER(CONCAT('%', :query, '%')) OR "
             + "LOWER(p.sku) LIKE LOWER(CONCAT('%', :query, '%')))")
     List<Product> searchAllProductsForAdmin(@Param("query") String query, Pageable pageable);
+
+    @Query("SELECT p FROM Product p WHERE p.active = true AND "
+            + "(:categoryId IS NULL OR p.category.id = :categoryId) AND "
+            + "(:minPrice IS NULL OR p.price >= :minPrice) AND "
+            + "(:maxPrice IS NULL OR p.price <= :maxPrice) AND "
+            + "(:search IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :search, '%')) OR "
+            + "LOWER(p.description) LIKE LOWER(CONCAT('%', :search, '%')) OR "
+            + "LOWER(p.sku) LIKE LOWER(CONCAT('%', :search, '%'))) AND "
+            + "(:inStock IS NULL OR (:inStock = true AND p.stockQuantity > 0) OR (:inStock = false AND p.stockQuantity = 0)) AND "
+            + "(:onSale IS NULL OR (:onSale = true AND p.discount > 0) OR (:onSale = false AND p.discount = 0)) "
+            + "ORDER BY p.displayOrder ASC, p.createdAt DESC")
+    Page<Product> findActiveProductsWithFiltersDefaultOrder(
+            @Param("categoryId") Long categoryId,
+            @Param("minPrice") BigDecimal minPrice,
+            @Param("maxPrice") BigDecimal maxPrice,
+            @Param("search") String search,
+            @Param("inStock") Boolean inStock,
+            @Param("onSale") Boolean onSale,
+            Pageable pageable);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.displayOrder = :displayOrder WHERE p.id = :id")
+    void updateDisplayOrder(@Param("id") Long id, @Param("displayOrder") Integer displayOrder);
 }

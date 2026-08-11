@@ -64,6 +64,8 @@ public class ProductRequest {
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
+    
+    private Integer displayOrder;
 
     @Size(max = 10, message = "Maximum 10 labels allowed")
     private List<String> labels;

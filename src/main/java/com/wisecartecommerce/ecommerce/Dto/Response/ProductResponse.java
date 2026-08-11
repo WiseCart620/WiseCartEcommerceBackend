@@ -56,6 +56,7 @@ public class ProductResponse {
     private BigDecimal widthCm;
     private BigDecimal heightCm;
     private BigDecimal weightKg;
+    private Integer displayOrder;
 
     // ── Multi-badge support ───────────────────────────────────────────────────
     private List<String> labels;

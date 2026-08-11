@@ -89,12 +89,10 @@ public class Product {
     @Builder.Default
     private Integer viewCount = 0;
 
-    /**
-     * Stores multiple badge labels as a comma-separated string,
-     * e.g. "New,Hot,Sale". Column length 500 supports ~40 badges.
-     * Run: ALTER TABLE products MODIFY COLUMN label VARCHAR(500);  (MySQL)
-     *   or ALTER TABLE products ALTER COLUMN label TYPE VARCHAR(500); (PostgreSQL)
-     */
+    @Column(name = "display_order")
+    @Builder.Default
+    private Integer displayOrder = 0;
+
     @Column(length = 500)
     private String label;
 
@@ -177,7 +175,6 @@ public class Product {
     private LocalDateTime updatedAt;
 
     // ── Computed helpers ───────────────────────────────────────────────────────
-
     public BigDecimal getDiscountedPrice() {
         if (discount.compareTo(BigDecimal.ZERO) > 0) {
             return price.subtract(price.multiply(discount.divide(BigDecimal.valueOf(100))));
@@ -190,8 +187,8 @@ public class Product {
     }
 
     /**
-     * Returns weight in grams for Flash Express API calls.
-     * Uses variation weight if available; falls back to product weight; then 500 g default.
+     * Returns weight in grams for Flash Express API calls. Uses variation
+     * weight if available; falls back to product weight; then 500 g default.
      */
     public int getWeightGrams() {
         if (weightKg == null || weightKg.compareTo(BigDecimal.ZERO) <= 0) {
@@ -216,16 +213,19 @@ public class Product {
     }
 
     // ── Image type filter methods ──────────────────────────────────────────────
-
     public List<ProductImage> getDescriptionImages() {
-        if (images == null) return new ArrayList<>();
+        if (images == null) {
+            return new ArrayList<>();
+        }
         return images.stream()
                 .filter(img -> img.getImageType() == ProductImage.ImageType.DESCRIPTION)
                 .collect(Collectors.toList());
     }
 
     public List<ProductImage> getGalleryImages() {
-        if (images == null) return new ArrayList<>();
+        if (images == null) {
+            return new ArrayList<>();
+        }
         return images.stream()
                 .filter(img -> img.getImageType() == ProductImage.ImageType.GALLERY)
                 .sorted(Comparator.comparing(ProductImage::getDisplayOrder))
