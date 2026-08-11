@@ -109,7 +109,7 @@ public class AdminProductController {
                 ? productService.getAllProducts(
                         PageRequest.of(0, size, Sort.by("createdAt").descending()),
                         null, null, null).getContent()
-                : productService.searchProducts(q, size);
+                : productService.searchProductsForAdmin(q, size);
         return ResponseEntity.ok(ApiResponse.success("Products found", results));
     }
 

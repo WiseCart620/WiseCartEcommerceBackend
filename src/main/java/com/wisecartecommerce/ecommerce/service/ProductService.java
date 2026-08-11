@@ -24,6 +24,8 @@ public interface ProductService {
 
     ProductResponse getProductBySku(String sku);
 
+    List<ProductResponse> searchProductsForAdmin(String query, int limit);
+
     Page<ProductResponse> getAllProducts(Pageable pageable, Long categoryId, Boolean active, String search);
 
     Page<ProductResponse> getActiveProducts(Pageable pageable, Long categoryId, BigDecimal minPrice,
