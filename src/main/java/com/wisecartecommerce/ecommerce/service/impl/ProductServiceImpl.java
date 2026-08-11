@@ -1052,6 +1052,7 @@ public class ProductServiceImpl implements ProductService {
                 .variations(variationResponses)
                 .active(product.isActive())
                 .featured(product.isFeatured())
+                .displayOrder(product.getDisplayOrder())
                 .labels(labelsFromString(product.getLabel()))
                 .reviewSummary(reviewSummary)
                 .createdAt(product.getCreatedAt())
