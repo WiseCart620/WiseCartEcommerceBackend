@@ -688,12 +688,7 @@ public class ProductServiceImpl implements ProductService {
     @Override
     @Transactional(readOnly = true)
     public Page<ProductResponse> getAllProducts(Pageable pageable, Long categoryId, Boolean active, String search) {
-        Page<Product> products;
-        if (categoryId != null || active != null || search != null) {
-            products = productRepository.findActiveProductsWithFilters(categoryId, null, null, search, null, null, pageable);
-        } else {
-            products = productRepository.findAll(pageable);
-        }
+        Page<Product> products = productRepository.findProductsForAdminWithFilters(categoryId, active, search, pageable);
         return products.map(this::mapToResponse);
     }
 
