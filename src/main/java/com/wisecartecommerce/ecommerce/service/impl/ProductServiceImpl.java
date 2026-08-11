@@ -58,7 +58,6 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariationRepository productVariationRepository;
     private final ProductImageRepository productImageRepository;
 
-
     private String labelsToString(List<String> labels) {
         if (labels == null || labels.isEmpty()) {
             return null;
@@ -69,7 +68,6 @@ public class ProductServiceImpl implements ProductService {
                 .distinct()
                 .collect(Collectors.joining(","));
     }
-
 
     private List<String> labelsFromString(String csv) {
         if (csv == null || csv.isBlank()) {
@@ -307,6 +305,7 @@ public class ProductServiceImpl implements ProductService {
         product.setUpc(request.getUpc());
         product.setDiscount(request.getDiscount() != null ? request.getDiscount() : BigDecimal.ZERO);
         product.setLabel(labelsToString(request.getLabels()));
+        product.setActive(request.isActive());
 
         if (request.getLazadaUrl() != null) {
             product.setLazadaUrl(request.getLazadaUrl());
