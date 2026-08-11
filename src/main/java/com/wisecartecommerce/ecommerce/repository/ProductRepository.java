@@ -20,6 +20,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     Optional<Product> findBySku(String sku);
 
+    boolean existsBySlug(String slug);
+
     List<Product> findByActiveTrue();
 
     Page<Product> findByCategoryId(Long categoryId, Pageable pageable);

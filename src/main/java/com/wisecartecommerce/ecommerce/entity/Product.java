@@ -63,6 +63,9 @@ public class Product {
     @Column(name = "sku", unique = true)
     private String sku;
 
+    @Column(name = "slug", unique = true)
+    private String slug;
+
     @Column(name = "upc", unique = true)
     private String upc;
 

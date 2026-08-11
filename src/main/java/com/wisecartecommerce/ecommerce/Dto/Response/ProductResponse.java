@@ -38,6 +38,7 @@ public class ProductResponse {
     private Long categoryId;
     private String categoryName;
     private String sku;
+    private String slug;
     private String imageUrl;
     private List<ProductImageResponse> images;
     private ProductImageResponse primaryImage;

@@ -95,6 +95,18 @@ public class CategoryServiceImpl implements CategoryService {
         return mapToResponse(category);
     }
 
+    private String generateSlug(String name) {
+        String base = name.toLowerCase().trim()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
+        String slug = base;
+        int suffix = 1;
+        while (categoryRepository.existsBySlug(slug)) {
+            slug = base + "-" + (++suffix);
+        }
+        return slug;
+    }
+
     @Override
     @CacheEvict(value = {"categories", "categoryTree"}, allEntries = true)
     public CategoryResponse createCategory(CategoryRequest request) {
@@ -108,6 +120,7 @@ public class CategoryServiceImpl implements CategoryService {
                 .name(request.getName())
                 .description(request.getDescription())
                 .imageUrl(request.getImageUrl())
+                .slug(generateSlug(request.getName()))
                 .active(request.isActive())
                 .build();
 
@@ -137,6 +150,9 @@ public class CategoryServiceImpl implements CategoryService {
             }
         });
 
+        if (!category.getName().equals(request.getName())) {
+            category.setSlug(generateSlug(request.getName()));
+        }
         category.setName(request.getName());
         category.setDescription(request.getDescription());
         category.setImageUrl(request.getImageUrl());
@@ -169,14 +185,14 @@ public class CategoryServiceImpl implements CategoryService {
 
         Long productCount = productRepository.countProductsByCategoryId(id);
         if (productCount > 0) {
-            throw new IllegalStateException("Cannot delete category with " + productCount + " products. " +
-                    "Please reassign or delete products first.");
+            throw new IllegalStateException("Cannot delete category with " + productCount + " products. "
+                    + "Please reassign or delete products first.");
         }
 
         List<Category> children = categoryRepository.findByParentIdAndActiveTrue(id);
         if (!children.isEmpty()) {
-            throw new IllegalStateException("Cannot delete category with subcategories. " +
-                    "Please delete or reassign subcategories first.");
+            throw new IllegalStateException("Cannot delete category with subcategories. "
+                    + "Please delete or reassign subcategories first.");
         }
 
         category.setActive(false);

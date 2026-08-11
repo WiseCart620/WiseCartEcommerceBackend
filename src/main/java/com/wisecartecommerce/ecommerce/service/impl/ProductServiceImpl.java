@@ -58,6 +58,18 @@ public class ProductServiceImpl implements ProductService {
     private final ProductVariationRepository productVariationRepository;
     private final ProductImageRepository productImageRepository;
 
+    private String generateSlug(String name) {
+        String base = name.toLowerCase().trim()
+                .replaceAll("[^a-z0-9]+", "-")
+                .replaceAll("(^-|-$)", "");
+        String slug = base;
+        int suffix = 1;
+        while (productRepository.existsBySlug(slug)) {
+            slug = base + "-" + (++suffix);
+        }
+        return slug;
+    }
+
     private String labelsToString(List<String> labels) {
         if (labels == null || labels.isEmpty()) {
             return null;
@@ -94,6 +106,7 @@ public class ProductServiceImpl implements ProductService {
 
         Product product = Product.builder()
                 .name(request.getName())
+                .slug(generateSlug(request.getName()))
                 .description(request.getDescription())
                 .price(request.getPrice())
                 .stockQuantity(request.getStockQuantity())
@@ -307,6 +320,9 @@ public class ProductServiceImpl implements ProductService {
         product.setHeightCm(request.getHeightCm());
         product.setWidthCm(request.getWidthCm());
         product.setLengthCm(request.getLengthCm());
+        if (!product.getName().equals(request.getName())) {
+            product.setSlug(generateSlug(request.getName()));
+        }
         product.setName(request.getName());
         product.setDescription(request.getDescription());
         product.setPrice(request.getPrice());
@@ -1040,6 +1056,7 @@ public class ProductServiceImpl implements ProductService {
                 .categoryId(product.getCategory() != null ? product.getCategory().getId() : null)
                 .categoryName(product.getCategory() != null ? product.getCategory().getName() : null)
                 .sku(product.getSku())
+                .slug(product.getSlug())
                 .upc(product.getUpc())
                 .imageUrl(product.getImageUrl())
                 .images(images)

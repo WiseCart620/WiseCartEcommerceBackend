@@ -117,6 +117,7 @@ public class UserServiceImpl implements UserService {
         log.info("Password changed for user: {}", user.getEmail());
     }
 
+
     @Override
     @Transactional
     public UserResponse uploadAvatar(MultipartFile file) {
