@@ -145,4 +145,15 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Modifying
     @Query("UPDATE Product p SET p.displayOrder = :displayOrder WHERE p.id = :id")
     void updateDisplayOrder(@Param("id") Long id, @Param("displayOrder") Integer displayOrder);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.shippingNote = :note WHERE p.shippingNote IS NULL OR p.shippingNote = ''")
+    int applyInfoNoteToProductsWithoutCustomNote(@Param("note") String note);
+
+    @Modifying
+    @Query("UPDATE Product p SET p.shippingNote = :note")
+    int overwriteInfoNoteOnAllProducts(@Param("note") String note);
+
+    @Query("SELECT COUNT(p) FROM Product p WHERE p.shippingNote IS NOT NULL AND p.shippingNote <> ''")
+    long countProductsWithCustomInfoNote();
 }
