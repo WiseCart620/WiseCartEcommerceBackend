@@ -3,7 +3,6 @@ package com.wisecartecommerce.ecommerce.service.impl;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import org.springframework.cache.annotation.CacheEvict;
@@ -24,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Service
+
 @RequiredArgsConstructor
 @Slf4j
 public class InfoNoteServiceImpl implements InfoNoteService {
@@ -40,7 +40,7 @@ public class InfoNoteServiceImpl implements InfoNoteService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "infoNoteResolve", allEntries = true)
+    @CacheEvict(value = "infoNoteResolveAll", allEntries = true)
     public InfoNoteResponse create(InfoNoteRequest request) {
         InfoNote note = InfoNote.builder()
                 .note(request.getNote())
@@ -61,7 +61,7 @@ public class InfoNoteServiceImpl implements InfoNoteService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "infoNoteResolve", allEntries = true)
+    @CacheEvict(value = "infoNoteResolveAll", allEntries = true)
     public InfoNoteResponse update(Long id, InfoNoteRequest request) {
         InfoNote note = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Info note not found: " + id));
@@ -87,7 +87,7 @@ public class InfoNoteServiceImpl implements InfoNoteService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "infoNoteResolve", allEntries = true)
+    @CacheEvict(value = "infoNoteResolveAll", allEntries = true)
     public void delete(Long id) {
         if (!repository.existsById(id)) {
             throw new ResourceNotFoundException("Info note not found: " + id);
@@ -98,7 +98,7 @@ public class InfoNoteServiceImpl implements InfoNoteService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "infoNoteResolve", allEntries = true)
+    @CacheEvict(value = "infoNoteResolveAll", allEntries = true)
     public InfoNoteResponse uploadIcon(Long id, MultipartFile file) {
         InfoNote note = repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Info note not found: " + id));
@@ -115,22 +115,27 @@ public class InfoNoteServiceImpl implements InfoNoteService {
     }
 
     @Override
-    @Cacheable(value = "infoNoteResolve", key = "#productId")
     @Transactional(readOnly = true)
     public InfoNoteResponse resolveForProduct(Long productId) {
+        return resolveAllForProduct(productId).stream().findFirst().orElse(null);
+    }
+
+    @Override
+    @Cacheable(value = "infoNoteResolveAll", key = "#productId")
+    @Transactional(readOnly = true)
+    public List<InfoNoteResponse> resolveAllForProduct(Long productId) {
+        List<InfoNote> result = new ArrayList<>();
         if (productId != null) {
             List<InfoNote> specific = repository.findByActiveTrueAndAppliesToAllFalseOrderByDisplayOrderAsc();
-            Optional<InfoNote> match = specific.stream()
+            specific.stream()
                     .filter(n -> n.getProductIds() != null && n.getProductIds().contains(productId))
-                    .findFirst();
-            if (match.isPresent()) {
-                return mapToResponse(match.get());
-            }
+                    .forEach(result::add);
         }
-        return repository.findByActiveTrueAndAppliesToAllTrueOrderByDisplayOrderAsc()
-                .stream().findFirst()
-                .map(this::mapToResponse)
-                .orElse(null);
+
+        if (result.isEmpty()) {
+            result.addAll(repository.findByActiveTrueAndAppliesToAllTrueOrderByDisplayOrderAsc());
+        }
+        return result.stream().map(this::mapToResponse).collect(Collectors.toList());
     }
 
     private InfoNoteResponse mapToResponse(InfoNote n) {

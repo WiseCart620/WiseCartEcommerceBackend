@@ -1,5 +1,7 @@
 package com.wisecartecommerce.ecommerce.controller.customer;
 
+import java.util.List;
+
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -23,5 +25,11 @@ public class InfoNoteController {
     public ResponseEntity<ApiResponse<InfoNoteResponse>> forProduct(@PathVariable Long productId) {
         return ResponseEntity.ok(ApiResponse.success("Info note resolved",
                 infoNoteService.resolveForProduct(productId)));
+    }
+
+    @GetMapping("/for-product/{productId}/all")
+    public ResponseEntity<ApiResponse<List<InfoNoteResponse>>> allForProduct(@PathVariable Long productId) {
+        return ResponseEntity.ok(ApiResponse.success("Info notes resolved",
+                infoNoteService.resolveAllForProduct(productId)));
     }
 }
