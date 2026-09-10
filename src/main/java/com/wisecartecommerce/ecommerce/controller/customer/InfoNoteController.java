@@ -15,7 +15,7 @@ import com.wisecartecommerce.ecommerce.service.InfoNoteService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/public/storefront/info-notes")
+@RequestMapping("/storefront/info-notes")
 @RequiredArgsConstructor
 public class InfoNoteController {
 
