@@ -59,12 +59,20 @@ public interface OrderService {
 
     OrderResponse createOrderForUser(User user, OrderRequest request);
 
+    OrderResponse createPendingMayaOrder(User user, OrderRequest request);
+
+    OrderResponse completeMayaOrder(Long orderId, String mayaPaymentMethod);
+
     void syncFlashDeliveryStatus(String pno);
 
     OrderResponse updateJntTracking(Long orderId, String trackingNumber,
             com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status status);
 
     OrderResponse updateCodPaymentStatus(Long orderId, com.wisecartecommerce.ecommerce.util.PaymentStatus status);
+
+    OrderResponse updateMayaPaymentStatus(Long orderId, com.wisecartecommerce.ecommerce.util.PaymentStatus status);
+
+    void reorderIntoCart(Long orderId);
 
     OrderResponse requestMayaRefund(Long orderId, String reason, BigDecimal customAmount);
 

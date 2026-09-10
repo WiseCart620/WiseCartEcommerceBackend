@@ -16,6 +16,7 @@ import com.wisecartecommerce.ecommerce.Dto.Request.OrderRequest;
 import com.wisecartecommerce.ecommerce.Dto.Response.OrderResponse;
 import com.wisecartecommerce.ecommerce.entity.AppSettings;
 import com.wisecartecommerce.ecommerce.entity.Cart;
+import com.wisecartecommerce.ecommerce.entity.Order;
 import com.wisecartecommerce.ecommerce.entity.PendingCheckout;
 import com.wisecartecommerce.ecommerce.entity.PendingCheckout.PendingCheckoutStatus;
 import com.wisecartecommerce.ecommerce.entity.User;
@@ -23,10 +24,13 @@ import com.wisecartecommerce.ecommerce.exception.CustomException;
 import com.wisecartecommerce.ecommerce.exception.ResourceNotFoundException;
 import com.wisecartecommerce.ecommerce.repository.AppSettingsRepository;
 import com.wisecartecommerce.ecommerce.repository.CartRepository;
+import com.wisecartecommerce.ecommerce.repository.OrderRepository;
 import com.wisecartecommerce.ecommerce.repository.PaymentRepository;
 import com.wisecartecommerce.ecommerce.repository.PendingCheckoutRepository;
 import com.wisecartecommerce.ecommerce.util.CouponValidationResult;
 import com.wisecartecommerce.ecommerce.util.CouponValidator;
+import com.wisecartecommerce.ecommerce.util.OrderStatus;
+import com.wisecartecommerce.ecommerce.util.PaymentStatus;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,6 +47,7 @@ public class MayaCheckoutService {
     private final PaymentRepository paymentRepository;
     private final CouponValidator couponValidator;
     private final AppSettingsRepository appSettingsRepository;
+    private final OrderRepository orderRepository;
     private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("599");
 
     @Transactional
@@ -432,7 +437,7 @@ public class MayaCheckoutService {
         });
     }
 
-    @Transactional    
+    @Transactional
 
     public String queryAndStoreMayaFailureReason(String checkoutRef, String mayaCheckoutId) {
         Map<String, Object> details = mayaService.getCheckoutDetails(mayaCheckoutId);
@@ -707,32 +712,8 @@ public class MayaCheckoutService {
 
         pendingCheckoutRepository.save(pending);
 
-        // ── Build and create order ────────────────────────────────────────────
-        OrderRequest orderRequest = new OrderRequest();
-        orderRequest.setPaymentMethod("maya");
-        orderRequest.setMayaPaymentMethod(mayaPaymentMethod);
-        orderRequest.setNotes(pending.getNotes());
-        orderRequest.setExpressCategory(pending.getExpressCategory());
+        OrderResponse order = orderService.completeMayaOrder(pending.getOrderId(), mayaPaymentMethod);
 
-        if (pending.getShippingAddressId() != null) {
-            orderRequest.setShippingAddressId(pending.getShippingAddressId());
-        } else {
-            OrderRequest.AddressData addr = new OrderRequest.AddressData();
-            addr.setFirstName(pending.getFirstName());
-            addr.setLastName(pending.getLastName());
-            addr.setAddressLine1(pending.getAddressLine1());
-            addr.setAddressLine2(pending.getAddressLine2());
-            addr.setCity(pending.getCity());
-            addr.setState(pending.getState());
-            addr.setPostalCode(pending.getPostalCode());
-            addr.setCountry(pending.getCountry());
-            addr.setPhone(pending.getPhone());
-            orderRequest.setShippingAddress(addr);
-        }
-
-        OrderResponse order = orderService.createOrderForUser(pending.getUser(), orderRequest);
-
-        pending.setOrderId(order.getId());
         pending.setStatus(PendingCheckoutStatus.COMPLETED);
         pendingCheckoutRepository.save(pending);
 
@@ -753,6 +734,66 @@ public class MayaCheckoutService {
 
         log.info("Order created from Maya: orderId={} ref={} paymentMethod={}",
                 order.getId(), checkoutRef, mayaPaymentMethod);
+    }
+
+    @Transactional
+    public Map<String, String> retryMayaPayment(Long orderId) {
+        User user = getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getUser() == null || !order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only pay for your own orders");
+        }
+        if (order.getPaymentStatus() != PaymentStatus.UNPAID || order.getStatus() != OrderStatus.PENDING) {
+            throw new CustomException("This order is not awaiting payment");
+        }
+
+        String checkoutRef = UUID.randomUUID().toString();
+        String verificationToken = generateVerificationToken(checkoutRef);
+
+        PendingCheckout pending = PendingCheckout.builder()
+                .checkoutRef(checkoutRef)
+                .user(user)
+                .status(PendingCheckoutStatus.PENDING)
+                .paymentMethod("maya")
+                .amount(order.getFinalAmount())
+                .orderId(order.getId())
+                .expiresAt(LocalDateTime.now().plusMinutes(30))
+                .verificationToken(verificationToken)
+                .build();
+        pendingCheckoutRepository.save(pending);
+
+        List<Map<String, Object>> mayaItems = new java.util.ArrayList<>();
+        for (com.wisecartecommerce.ecommerce.entity.OrderItem item : order.getItems()) {
+            if (item.isAddon()) {
+                continue;
+            }
+            String name = item.getProduct().getName()
+                    + (item.getVariation() != null ? " - " + item.getVariation().getName() : "");
+            mayaItems.add(Map.<String, Object>of(
+                    "name", name,
+                    "quantity", item.getQuantity(),
+                    "totalAmount", Map.of("value", item.getSubtotal(), "currency", "PHP")
+            ));
+        }
+
+        Map<String, String> checkoutResult = mayaService.createCheckoutWithRedirects(
+                checkoutRef, order.getFinalAmount(),
+                order.getShippingAddress() != null ? order.getShippingAddress().getFirstName() : user.getFirstName(),
+                order.getShippingAddress() != null ? order.getShippingAddress().getLastName() : user.getLastName(),
+                order.getShippingAddress() != null ? order.getShippingAddress().getPhone() : null,
+                user.getEmail(), null, null, null, mayaItems
+        );
+
+        pending.setMayaCheckoutUrl(checkoutResult.get("redirectUrl"));
+        pending.setMayaCheckoutId(checkoutResult.get("checkoutId"));
+        pendingCheckoutRepository.save(pending);
+
+        Map<String, String> result = new HashMap<>();
+        result.put("checkoutUrl", checkoutResult.get("redirectUrl"));
+        result.put("token", verificationToken);
+        return result;
     }
 
     @Transactional

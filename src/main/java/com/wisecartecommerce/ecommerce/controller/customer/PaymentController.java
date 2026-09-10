@@ -114,6 +114,13 @@ public class PaymentController {
         return ResponseEntity.ok(ApiResponse.success("Checkout status", status));
     }
 
+    @PostMapping("/maya/retry/{orderId}")
+    @Operation(summary = "Retry Maya payment for an unpaid order")
+    public ResponseEntity<ApiResponse<Map<String, String>>> retryMayaPayment(@PathVariable Long orderId) {
+        Map<String, String> result = mayaCheckoutService.retryMayaPayment(orderId);
+        return ResponseEntity.ok(ApiResponse.success("Maya payment retry initiated", result));
+    }
+
     @PostMapping("/orders/{orderId}/refund")
     @Operation(summary = "Request Maya refund for cancelled or returned order")
     public ResponseEntity<ApiResponse<OrderResponse>> requestMayaRefund(

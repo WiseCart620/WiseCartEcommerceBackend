@@ -319,6 +319,212 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    public OrderResponse createPendingMayaOrder(User user, OrderRequest request) {
+        Cart cart = cartRepository.findByUserIdWithItems(user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Cart is empty"));
+
+        if (cart.getItems().isEmpty()) {
+            throw new CustomException("Cannot create order with an empty cart");
+        }
+
+        Address shippingAddress = resolveAddress(
+                request.getShippingAddressId(), request.getShippingAddress(), user);
+
+        List<OrderItem> orderItems = new ArrayList<>();
+        Map<Long, Integer> stockUpdates = new HashMap<>();
+        Map<Long, Integer> variationStockUpdates = new HashMap<>();
+
+        for (CartItem cartItem : cart.getItems()) {
+            Product product = cartItem.getProduct();
+            ProductVariation variation = cartItem.getVariation();
+
+            if (!product.isActive()) {
+                throw new CustomException("Product '" + product.getName() + "' is no longer available");
+            }
+            if (variation != null) {
+                if (!variation.isActive()) {
+                    throw new CustomException("Variation '" + variation.getName() + "' is no longer available");
+                }
+                if (variation.getStockQuantity() < cartItem.getQuantity()) {
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + " (" + variation.getName() + ")'. Available: " + variation.getStockQuantity());
+                }
+                variationStockUpdates.put(variation.getId(),
+                        variation.getStockQuantity() - cartItem.getQuantity());
+            } else {
+                if (product.getStockQuantity() < cartItem.getQuantity()) {
+                    throw new CustomException("Insufficient stock for '" + product.getName()
+                            + "'. Available: " + product.getStockQuantity());
+                }
+                stockUpdates.put(product.getId(), product.getStockQuantity() - cartItem.getQuantity());
+            }
+
+            orderItems.add(OrderItem.builder()
+                    .product(product)
+                    .variation(variation)
+                    .quantity(cartItem.getQuantity())
+                    .price(cartItem.getPrice())
+                    .subtotal(cartItem.getSubtotal())
+                    .isAddon(cartItem.isAddon())
+                    .addonProduct(cartItem.getAddonProduct())
+                    .addonProductAddOn(cartItem.getAddonProductAddOn())
+                    .addonVariation(cartItem.getAddonVariation())
+                    .addonPrice(cartItem.getAddonPrice())
+                    .build());
+        }
+
+        BigDecimal subtotal = cart.getSubtotal();
+        String couponCode = cart.getCouponCode();
+        BigDecimal discountAmount = BigDecimal.ZERO;
+        boolean couponFreeShipping = false;
+
+        if (couponCode != null && !couponCode.isBlank()) {
+            try {
+                CouponValidationResult couponResult = couponValidator.validate(couponCode, subtotal, user.getId(), cart.getItems());
+                discountAmount = couponResult.getDiscountAmount();
+                couponFreeShipping = couponResult.isFreeShipping();
+            } catch (CustomException e) {
+                log.warn("Coupon '{}' invalid at pending Maya order creation: {}", couponCode, e.getMessage());
+                couponCode = null;
+            }
+        }
+
+        BigDecimal shippingAmount = couponFreeShipping
+                ? BigDecimal.ZERO
+                : resolveShippingFee(request.getShippingCarrier(), request.getExpressCategory(),
+                        shippingAddress, subtotal, cart.getItems(), false);
+
+        BigDecimal taxableAmount = subtotal.subtract(discountAmount).max(BigDecimal.ZERO);
+        BigDecimal vatRate = getVatRateFromSettings();
+        BigDecimal taxAmount = taxableAmount.multiply(vatRate).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal finalAmount = taxableAmount.add(shippingAmount).add(taxAmount);
+
+        Order order = Order.builder()
+                .orderNumber(generateOrderNumber())
+                .user(user)
+                .shippingAddress(shippingAddress)
+                .billingAddress(shippingAddress)
+                .paymentMethod("maya")
+                .couponCode(couponCode)
+                .notes(request.getNotes())
+                .status(OrderStatus.PENDING)
+                .paymentStatus(PaymentStatus.UNPAID)
+                .totalAmount(subtotal)
+                .discountAmount(discountAmount)
+                .shippingAmount(shippingAmount)
+                .taxAmount(taxAmount)
+                .finalAmount(finalAmount)
+                .shippingCarrier("jnt".equalsIgnoreCase(request.getShippingCarrier()) ? "J&T Express" : "Flash Express")
+                .items(new ArrayList<>())
+                .build();
+
+        for (OrderItem item : orderItems) {
+            item.setOrder(order);
+            order.getItems().add(item);
+        }
+
+        Order saved = orderRepository.save(order);
+        orderRepository.flush();
+
+        Payment payment = Payment.builder()
+                .order(saved)
+                .transactionId("TXN-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase())
+                .amount(finalAmount)
+                .status(PaymentStatus.UNPAID)
+                .paymentMethod("maya")
+                .paymentGateway("Maya")
+                .build();
+        paymentRepository.save(payment);
+        saved.getPayments().add(payment);
+
+        // Reserve stock now so it isn't sold again while payment is pending
+        for (Map.Entry<Long, Integer> entry : stockUpdates.entrySet()) {
+            productRepository.findById(entry.getKey()).ifPresent(p -> {
+                p.setStockQuantity(entry.getValue());
+                productRepository.save(p);
+            });
+        }
+        for (Map.Entry<Long, Integer> entry : variationStockUpdates.entrySet()) {
+            productVariationRepository.findById(entry.getKey()).ifPresent(v -> {
+                v.setStockQuantity(entry.getValue());
+                productVariationRepository.save(v);
+            });
+        }
+
+        log.info("Pending Maya order created: {} | user: {} | amount: ₱{}",
+                saved.getOrderNumber(), user.getEmail(), finalAmount);
+
+        return mapToOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse completeMayaOrder(Long orderId, String mayaPaymentMethod) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (order.getPaymentStatus() == PaymentStatus.COMPLETED) {
+            log.info("Order {} already completed, skipping", order.getOrderNumber());
+            return mapToOrderResponse(order);
+        }
+
+        order.setPaymentStatus(PaymentStatus.COMPLETED);
+        order.setStatus(OrderStatus.PROCESSING);
+        if (mayaPaymentMethod != null) {
+            order.setMayaPaymentMethod(mayaPaymentMethod);
+        }
+
+        order.getPayments().stream()
+                .filter(p -> p.getStatus() != PaymentStatus.COMPLETED)
+                .forEach(p -> {
+                    p.setStatus(PaymentStatus.COMPLETED);
+                    p.setCompletedAt(LocalDateTime.now());
+                    paymentRepository.save(p);
+                });
+
+        Order saved = orderRepository.save(order);
+
+        if (saved.getTrackingNumber() == null && !"J&T Express".equals(saved.getShippingCarrier())) {
+            int weightGrams = weightCalculator.calculateCartWeightGrams(
+                    saved.getItems().stream().map(oi -> {
+                        CartItem ci = new CartItem();
+                        ci.setProduct(oi.getProduct());
+                        ci.setVariation(oi.getVariation());
+                        ci.setQuantity(oi.getQuantity());
+                        return ci;
+                    }).collect(Collectors.toList()));
+            assignFlashOrderNumber(saved, saved.getShippingAddress(), weightGrams, 1);
+            saved = orderRepository.save(saved);
+        }
+
+        cartRepository.findByUserIdWithItems(saved.getUser().getId()).ifPresent(cart -> {
+            cart.getItems().clear();
+            cart.setSubtotal(BigDecimal.ZERO);
+            cart.setTotal(BigDecimal.ZERO);
+            cart.setDiscountAmount(BigDecimal.ZERO);
+            cart.clearCoupon();
+            cartRepository.save(cart);
+        });
+
+        try {
+            emailService.sendOrderConfirmationEmail(saved);
+        } catch (Exception e) {
+            log.error("Failed to send confirmation email for order {}: {}", saved.getOrderNumber(), e.getMessage());
+        }
+        sendOrderStatusNotification(saved,
+                "Order Placed Successfully ✅",
+                "Your order #" + saved.getOrderNumber() + " has been placed and is being processed.");
+        notificationService.createAdminNotification(
+                "New Order Received",
+                "Order #" + saved.getOrderNumber() + " was placed by " + saved.getUser().getEmail() + ".",
+                "ORDER", saved.getId(), "ORDER");
+
+        log.info("Maya order completed: {} | amount: ₱{}", saved.getOrderNumber(), saved.getFinalAmount());
+        return mapToOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
     public OrderResponse createOrderForUser(User user, OrderRequest request) {
         Cart cart = cartRepository.findByUserIdWithItems(user.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Cart is empty"));
@@ -1288,6 +1494,14 @@ public class OrderServiceImpl implements OrderService {
         return mapToOrderResponse(saved);
     }
 
+    private static final java.util.Set<PaymentStatus> COD_ALLOWED_STATUSES = java.util.EnumSet.of(
+            PaymentStatus.PENDING, PaymentStatus.UNPAID, PaymentStatus.COMPLETED,
+            PaymentStatus.PROCESSING_REFUND, PaymentStatus.PARTIALLY_REFUNDED,
+            PaymentStatus.REFUNDED, PaymentStatus.FAILED);
+
+    private static final java.util.Set<PaymentStatus> MAYA_ADMIN_ALLOWED_STATUSES = java.util.EnumSet.of(
+            PaymentStatus.PROCESSING_REFUND, PaymentStatus.REFUNDED);
+
     @Override
     @Transactional
     public OrderResponse updateCodPaymentStatus(Long orderId, PaymentStatus status) {
@@ -1296,6 +1510,9 @@ public class OrderServiceImpl implements OrderService {
 
         if (!"cod".equalsIgnoreCase(order.getPaymentMethod())) {
             throw new CustomException("Payment status can only be manually changed for COD orders");
+        }
+        if (!COD_ALLOWED_STATUSES.contains(status)) {
+            throw new CustomException("Invalid status for COD order: " + status);
         }
 
         order.setPaymentStatus(status);
@@ -1308,6 +1525,11 @@ public class OrderServiceImpl implements OrderService {
                     payment.setCompletedAt(LocalDateTime.now());
                 case REFUNDED ->
                     payment.setRefundedAt(LocalDateTime.now());
+                case PROCESSING_REFUND -> {
+                    if (payment.getRefundAmount() == null) {
+                        payment.setRefundAmount(order.getFinalAmount());
+                    }
+                }
                 case PENDING -> {
                     payment.setCompletedAt(null);
                     payment.setRefundedAt(null);
@@ -1325,6 +1547,42 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    public OrderResponse updateMayaPaymentStatus(Long orderId, PaymentStatus status) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!"maya".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new CustomException("This endpoint is only for Maya-paid orders");
+        }
+        if (!MAYA_ADMIN_ALLOWED_STATUSES.contains(status)) {
+            throw new CustomException("Admins can only set Maya payment status to PROCESSING_REFUND or REFUNDED");
+        }
+
+        order.setPaymentStatus(status);
+
+        Payment payment = order.getPayments().stream()
+                .filter(p -> p.getStatus() == PaymentStatus.COMPLETED)
+                .findFirst()
+                .orElse(order.getPayments().stream().findFirst().orElse(null));
+
+        if (payment != null) {
+            payment.setStatus(status);
+            if (status == PaymentStatus.REFUNDED) {
+                payment.setRefundedAt(LocalDateTime.now());
+                if (payment.getRefundAmount() == null) {
+                    payment.setRefundAmount(order.getFinalAmount());
+                }
+            }
+            paymentRepository.save(payment);
+        }
+
+        Order saved = orderRepository.save(order);
+        log.info("Maya payment status manually set to {} for order {}", status, saved.getOrderNumber());
+        return mapToOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
     public OrderResponse cancelOrder(Long id) {
         Order order = orderRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
@@ -1335,6 +1593,85 @@ public class OrderServiceImpl implements OrderService {
         order.setCancelledAt(LocalDateTime.now());
         restoreStock(order);
         return mapToOrderResponse(orderRepository.save(order));
+    }
+
+    @Override
+    @Transactional
+    public void reorderIntoCart(Long orderId) {
+        User user = getCurrentUser();
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!order.getUser().getId().equals(user.getId())) {
+            throw new CustomException("You can only reorder your own orders");
+        }
+
+        Cart cart = cartRepository.findByUserIdWithItems(user.getId())
+                .orElseGet(() -> {
+                    Cart c = new Cart();
+                    c.setUser(user);
+                    return cartRepository.save(c);
+                });
+
+        int addedCount = 0;
+        for (OrderItem item : order.getItems()) {
+            if (item.isAddon()) {
+                continue;
+            }
+
+            Product product = item.getProduct();
+            if (product == null || !product.isActive()) {
+                continue;
+            }
+
+            ProductVariation variation = item.getVariation();
+            if (variation != null && !variation.isActive()) {
+                continue;
+            }
+
+            Integer availableStock = variation != null ? variation.getStockQuantity() : product.getStockQuantity();
+            if (availableStock == null || availableStock <= 0) {
+                continue;
+            }
+
+            int qty = Math.min(item.getQuantity(), availableStock);
+
+            CartItem existing = cart.getItems().stream()
+                    .filter(ci -> ci.getProduct().getId().equals(product.getId())
+                    && java.util.Objects.equals(
+                            ci.getVariation() != null ? ci.getVariation().getId() : null,
+                            variation != null ? variation.getId() : null))
+                    .findFirst()
+                    .orElse(null);
+
+            BigDecimal price = variation != null
+                    ? (variation.getDiscountedPrice() != null ? variation.getDiscountedPrice() : variation.getPrice())
+                    : (product.getDiscountedPrice() != null ? product.getDiscountedPrice() : product.getPrice());
+
+            if (existing != null) {
+                existing.setQuantity(existing.getQuantity() + qty);
+                existing.setPrice(price);
+            } else {
+                CartItem newItem = new CartItem();
+                newItem.setCart(cart);
+                newItem.setProduct(product);
+                newItem.setVariation(variation);
+                newItem.setQuantity(qty);
+                newItem.setPrice(price);
+                cart.getItems().add(newItem);
+            }
+            addedCount++;
+        }
+
+        if (addedCount == 0) {
+            throw new CustomException("None of the items from this order are available to reorder right now");
+        }
+
+        cart.setSubtotal(cart.getItems().stream()
+                .map(CartItem::getSubtotal)
+                .reduce(BigDecimal.ZERO, BigDecimal::add));
+        cart.setTotal(cart.getSubtotal());
+        cartRepository.save(cart);
     }
 
     @Override

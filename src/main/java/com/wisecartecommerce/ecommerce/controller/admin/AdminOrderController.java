@@ -107,6 +107,15 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success("Payment status updated", response));
     }
 
+    @PatchMapping("/{id}/maya-payment-status")
+    @Operation(summary = "Manually set payment status for Maya orders (refund flows only)")
+    public ResponseEntity<ApiResponse<OrderResponse>> updateMayaPaymentStatus(
+            @PathVariable Long id,
+            @RequestParam com.wisecartecommerce.ecommerce.util.PaymentStatus status) {
+        OrderResponse response = orderService.updateMayaPaymentStatus(id, status);
+        return ResponseEntity.ok(ApiResponse.success("Maya payment status updated", response));
+    }
+
     @DeleteMapping("/{id}")
     @Operation(summary = "Cancel order")
     public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(@PathVariable Long id) {

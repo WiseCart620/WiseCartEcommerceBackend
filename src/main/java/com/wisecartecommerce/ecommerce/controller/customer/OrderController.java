@@ -152,4 +152,11 @@ public class OrderController {
         OrderResponse response = orderService.createReview(id, review, rating);
         return ResponseEntity.ok(ApiResponse.success("Review submitted", response));
     }
+
+    @PostMapping("/{id}/reorder")
+    @Operation(summary = "Re-add all items from a previous order into the cart")
+    public ResponseEntity<ApiResponse<Void>> reorder(@PathVariable Long id) {
+        orderService.reorderIntoCart(id);
+        return ResponseEntity.ok(ApiResponse.success("Items added back to cart", null));
+    }
 }

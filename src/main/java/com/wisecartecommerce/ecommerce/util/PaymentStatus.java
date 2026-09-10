@@ -2,9 +2,11 @@ package com.wisecartecommerce.ecommerce.util;
 
 public enum PaymentStatus {
     PENDING,
+    UNPAID,
     COMPLETED,
     FAILED,
-    REFUNDED,
+    PROCESSING_REFUND,
     PARTIALLY_REFUNDED,
+    REFUNDED,
     CANCELLED
 }
