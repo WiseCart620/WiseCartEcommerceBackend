@@ -27,7 +27,6 @@ import com.wisecartecommerce.ecommerce.repository.CategoryRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductAddOnRepository;
 import com.wisecartecommerce.ecommerce.repository.ProductRepository;
 import java.util.Comparator;
-import com.wisecartecommerce.ecommerce.entity.ProductVariation;
 
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -177,19 +176,6 @@ public class AdminProductAddOnController {
         return ResponseEntity.ok().build();
     }
 
-    // ── Marketplace links ──────────────────────────────────────────────────
-
-    @PatchMapping("/marketplace-links")
-    public ResponseEntity<?> updateMarketplaceLinks(@PathVariable Long productId,
-            @RequestBody MarketplaceLinksRequest req) {
-        Product product = productRepository.findById(productId).orElseThrow();
-        product.setLazadaUrl(req.getLazadaUrl());
-        product.setShopeeUrl(req.getShopeeUrl());
-        productRepository.save(product);
-        return ResponseEntity.ok().build();
-    }
-
-    // ── Request DTOs ───────────────────────────────────────────────────────
 
     @Data
     static class AddOnRequest {
@@ -203,11 +189,5 @@ public class AdminProductAddOnController {
         private String mode;
         private Long categoryId;
         private List<Long> productIds;
-    }
-
-    @Data
-    static class MarketplaceLinksRequest {
-        private String lazadaUrl;
-        private String shopeeUrl;
     }
 }
