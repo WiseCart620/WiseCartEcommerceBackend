@@ -1412,6 +1412,8 @@ public class OrderServiceImpl implements OrderService {
         if (status == com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status.PICKED_UP
                 && order.getJntPickedUpAt() == null) {
             order.setJntPickedUpAt(LocalDateTime.now());
+        } else if (status == com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status.AWAITING_PICKUP) {
+            order.setJntPickedUpAt(null);
         }
 
         boolean wasTerminal = order.getStatus() == OrderStatus.DELIVERED
@@ -1505,44 +1507,53 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public OrderResponse updateCodPaymentStatus(Long orderId, PaymentStatus status) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+        try {
+            Order order = orderRepository.findById(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
 
-        if (!"cod".equalsIgnoreCase(order.getPaymentMethod())) {
-            throw new CustomException("Payment status can only be manually changed for COD orders");
-        }
-        if (!COD_ALLOWED_STATUSES.contains(status)) {
-            throw new CustomException("Invalid status for COD order: " + status);
-        }
-
-        order.setPaymentStatus(status);
-
-        Payment payment = order.getPayments().stream().findFirst().orElse(null);
-        if (payment != null) {
-            payment.setStatus(status);
-            switch (status) {
-                case COMPLETED ->
-                    payment.setCompletedAt(LocalDateTime.now());
-                case REFUNDED ->
-                    payment.setRefundedAt(LocalDateTime.now());
-                case PROCESSING_REFUND -> {
-                    if (payment.getRefundAmount() == null) {
-                        payment.setRefundAmount(order.getFinalAmount());
-                    }
-                }
-                case PENDING -> {
-                    payment.setCompletedAt(null);
-                    payment.setRefundedAt(null);
-                }
-                default -> {
-                    /* FAILED etc — leave timestamps as-is */ }
+            if (!"cod".equalsIgnoreCase(order.getPaymentMethod())) {
+                throw new CustomException("Payment status can only be manually changed for COD orders");
             }
-            paymentRepository.save(payment);
-        }
+            if (!COD_ALLOWED_STATUSES.contains(status)) {
+                throw new CustomException("Invalid status for COD order: " + status);
+            }
 
-        Order saved = orderRepository.save(order);
-        log.info("COD payment status manually set to {} for order {}", status, saved.getOrderNumber());
-        return mapToOrderResponse(saved);
+            order.setPaymentStatus(status);
+
+            Payment payment = order.getPayments().stream().findFirst().orElse(null);
+            if (payment != null) {
+                payment.setStatus(status);
+                switch (status) {
+                    case COMPLETED ->
+                        payment.setCompletedAt(LocalDateTime.now());
+                    case REFUNDED ->
+                        payment.setRefundedAt(LocalDateTime.now());
+                    case PROCESSING_REFUND -> {
+                        if (payment.getRefundAmount() == null) {
+                            payment.setRefundAmount(order.getFinalAmount());
+                        }
+                    }
+                    case PENDING -> {
+                        payment.setCompletedAt(null);
+                        payment.setRefundedAt(null);
+                    }
+                    default -> {
+                        /* FAILED etc — leave timestamps as-is */ }
+                }
+                paymentRepository.save(payment);
+            }
+
+            Order saved = orderRepository.save(order);
+            log.info("COD payment status manually set to {} for order {}", status, saved.getOrderNumber());
+            return mapToOrderResponse(saved);
+
+        } catch (ResourceNotFoundException | CustomException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Failed to update COD payment status for order {} to {}: {}",
+                    orderId, status, e.getMessage(), e);
+            throw new CustomException("Failed to update payment status. Please check server logs for details.");
+        }
     }
 
     @Override
