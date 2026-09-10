@@ -2,6 +2,7 @@ package com.wisecartecommerce.ecommerce.controller.admin;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -192,6 +193,16 @@ public class AdminProductController {
             @RequestParam Integer quantity) {
         ProductResponse response = productService.updateStock(id, quantity);
         return ResponseEntity.ok(ApiResponse.success("Stock updated successfully", response));
+    }
+
+    @PatchMapping("/{id}/marketplace-links")
+    @Operation(summary = "Update Lazada/Shopee marketplace links")
+    public ResponseEntity<ApiResponse<ProductResponse>> updateMarketplaceLinks(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        ProductResponse response = productService.updateMarketplaceLinks(
+                id, body.get("lazadaUrl"), body.get("shopeeUrl"));
+        return ResponseEntity.ok(ApiResponse.success("Marketplace links updated", response));
     }
 
     @PatchMapping("/{id}/status")

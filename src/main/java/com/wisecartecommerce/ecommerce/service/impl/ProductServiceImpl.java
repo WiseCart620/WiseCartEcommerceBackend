@@ -442,7 +442,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
+    @CacheEvict(value = {"products", "activeProducts", "newArrivals", "topSelling"}, allEntries = true)
     public ProductResponse updateStock(Long id, Integer quantity) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
@@ -457,7 +457,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"products", "activeProducts", "featuredProducts"}, allEntries = true)
+    @CacheEvict(value = {"products", "activeProducts", "featuredProducts", "newArrivals", "topSelling"}, allEntries = true)
     public ProductResponse toggleProductStatus(Long id, boolean active) {
         Product product = productRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
@@ -469,7 +469,7 @@ public class ProductServiceImpl implements ProductService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
+    @CacheEvict(value = {"products", "activeProducts", "newArrivals", "topSelling"}, allEntries = true)
     public ProductResponse updatePrice(Long id, BigDecimal price) {
         if (price.compareTo(BigDecimal.ZERO) <= 0) {
             throw new CustomException("Price must be greater than 0");
@@ -480,6 +480,19 @@ public class ProductServiceImpl implements ProductService {
         Product updatedProduct = productRepository.save(product);
         log.info("Price updated for product: {} (ID: {}) to {}", product.getName(), id, price);
         return mapToResponse(updatedProduct);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = {"products", "activeProducts"}, allEntries = true)
+    public ProductResponse updateMarketplaceLinks(Long id, String lazadaUrl, String shopeeUrl) {
+        Product product = productRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Product not found"));
+        product.setLazadaUrl(lazadaUrl);
+        product.setShopeeUrl(shopeeUrl);
+        Product updated = productRepository.save(product);
+        log.info("Marketplace links updated for product: {} (ID: {})", product.getName(), id);
+        return mapToResponse(updated);
     }
 
     @Override

@@ -61,6 +61,8 @@ public interface ProductService {
 
     ProductResponse toggleFeaturedStatus(Long id, boolean featured);
 
+    ProductResponse updateMarketplaceLinks(Long id, String lazadaUrl, String shopeeUrl);
+
     List<ProductResponse> getLowStockProducts(int threshold);
 
     List<ProductResponse> searchProducts(String query, int limit);
