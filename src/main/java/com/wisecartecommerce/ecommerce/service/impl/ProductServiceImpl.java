@@ -118,6 +118,7 @@ public class ProductServiceImpl implements ProductService {
                 .active(true)
                 .lazadaUrl(request.getLazadaUrl())
                 .shopeeUrl(request.getShopeeUrl())
+                .shippingNote(request.getShippingNote())
                 .recommendationCategory(request.getRecommendationCategoryId() != null
                         ? categoryRepository.findById(request.getRecommendationCategoryId()).orElse(null)
                         : null)
@@ -342,6 +343,9 @@ public class ProductServiceImpl implements ProductService {
         }
         if (request.getShopeeUrl() != null) {
             product.setShopeeUrl(request.getShopeeUrl());
+        }
+        if (request.getShippingNote() != null) {
+            product.setShippingNote(request.getShippingNote());
         }
 
         if (request.getRecommendationCategoryId() != null) {
@@ -1080,6 +1084,7 @@ public class ProductServiceImpl implements ProductService {
                 .lengthCm(product.getLengthCm())
                 .lazadaUrl(product.getLazadaUrl())
                 .shopeeUrl(product.getShopeeUrl())
+                .shippingNote(product.getShippingNote())
                 .addOns(product.getAddOns().stream().map(a -> {
                     Product ap = a.getAddOnProduct();
                     List<ProductVariation> activeVars = ap.getVariations().stream()

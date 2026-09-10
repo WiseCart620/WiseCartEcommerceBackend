@@ -64,6 +64,7 @@ public class ProductResponse {
 
     private String lazadaUrl;
     private String shopeeUrl;
+    private String shippingNote;
     private List<ProductAddOnResponse> addOns;
     private List<ProductSummaryResponse> recommendedProducts;
     private Long recommendationCategoryId;

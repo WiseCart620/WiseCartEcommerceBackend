@@ -59,12 +59,12 @@ public class ProductRequest {
     private boolean featured = false;
 
     private List<ProductVariationRequest> variations;
-    
+
     private BigDecimal weightKg;
     private BigDecimal lengthCm;
     private BigDecimal widthCm;
     private BigDecimal heightCm;
-    
+
     private Integer displayOrder;
 
     @Size(max = 10, message = "Maximum 10 labels allowed")
@@ -72,6 +72,7 @@ public class ProductRequest {
 
     private String lazadaUrl;
     private String shopeeUrl;
+    private String shippingNote;
     private List<Long> recommendedProductIds;
     private Long recommendationCategoryId;
 }

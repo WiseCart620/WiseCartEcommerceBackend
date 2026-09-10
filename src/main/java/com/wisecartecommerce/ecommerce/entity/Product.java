@@ -109,6 +109,9 @@ public class Product {
     @Column(name = "shopee_url", length = 2048)
     private String shopeeUrl;
 
+    @Column(name = "shipping_note", length = 500)
+    private String shippingNote;
+
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("displayOrder ASC")
     @Builder.Default
