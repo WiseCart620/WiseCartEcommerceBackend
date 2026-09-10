@@ -1193,8 +1193,11 @@ public class OrderServiceImpl implements OrderService {
             throw new CustomException("This order is not shipped via J&T Express");
         }
 
-        if (trackingNumber != null && !trackingNumber.isBlank()) {
-            order.setTrackingNumber(trackingNumber.trim());
+        // An explicitly-sent empty string clears the tracking number.
+        // A null (param omitted) leaves whatever is already saved untouched.
+        if (trackingNumber != null) {
+            String trimmed = trackingNumber.trim();
+            order.setTrackingNumber(trimmed.isEmpty() ? null : trimmed);
         }
 
         var prevJntStatus = order.getJntTrackingStatus();
@@ -1204,6 +1207,9 @@ public class OrderServiceImpl implements OrderService {
                 && order.getJntPickedUpAt() == null) {
             order.setJntPickedUpAt(LocalDateTime.now());
         }
+
+        boolean wasTerminal = order.getStatus() == OrderStatus.DELIVERED
+                || order.getStatus() == OrderStatus.RETURNED;
 
         switch (status) {
             case DELIVERED -> {
@@ -1224,13 +1230,21 @@ public class OrderServiceImpl implements OrderService {
             case RETURNED ->
                 order.setStatus(OrderStatus.RETURNED);
             case OUT_FOR_DELIVERY -> {
-                if (order.getStatus() == OrderStatus.PENDING) {
+                if (order.getStatus() == OrderStatus.PENDING || wasTerminal) {
                     order.setStatus(OrderStatus.PROCESSING);
                 }
             }
             default -> {
-                // AWAITING_PICKUP, PICKED_UP, IN_TRANSIT — leave order.status alone
+                if (wasTerminal) {
+                    order.setStatus(OrderStatus.PROCESSING);
+                }
             }
+        }
+
+        if (wasTerminal
+                && status != com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status.DELIVERED
+                && status != com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status.RETURNED) {
+            order.setDeliveredAt(null);
         }
 
         Order saved = orderRepository.save(order);
@@ -1271,6 +1285,41 @@ public class OrderServiceImpl implements OrderService {
         log.info("J&T tracking updated: order={} status={} tracking={}",
                 saved.getOrderNumber(), status, saved.getTrackingNumber());
 
+        return mapToOrderResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponse updateCodPaymentStatus(Long orderId, PaymentStatus status) {
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
+
+        if (!"cod".equalsIgnoreCase(order.getPaymentMethod())) {
+            throw new CustomException("Payment status can only be manually changed for COD orders");
+        }
+
+        order.setPaymentStatus(status);
+
+        Payment payment = order.getPayments().stream().findFirst().orElse(null);
+        if (payment != null) {
+            payment.setStatus(status);
+            switch (status) {
+                case COMPLETED ->
+                    payment.setCompletedAt(LocalDateTime.now());
+                case REFUNDED ->
+                    payment.setRefundedAt(LocalDateTime.now());
+                case PENDING -> {
+                    payment.setCompletedAt(null);
+                    payment.setRefundedAt(null);
+                }
+                default -> {
+                    /* FAILED etc — leave timestamps as-is */ }
+            }
+            paymentRepository.save(payment);
+        }
+
+        Order saved = orderRepository.save(order);
+        log.info("COD payment status manually set to {} for order {}", status, saved.getOrderNumber());
         return mapToOrderResponse(saved);
     }
 

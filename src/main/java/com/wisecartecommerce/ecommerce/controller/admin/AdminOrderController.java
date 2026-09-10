@@ -98,6 +98,15 @@ public class AdminOrderController {
         return ResponseEntity.ok(ApiResponse.success("J&T tracking updated", response));
     }
 
+    @PatchMapping("/{id}/payment-status")
+    @Operation(summary = "Manually set payment status (COD orders only)")
+    public ResponseEntity<ApiResponse<OrderResponse>> updatePaymentStatus(
+            @PathVariable Long id,
+            @RequestParam com.wisecartecommerce.ecommerce.util.PaymentStatus status) {
+        OrderResponse response = orderService.updateCodPaymentStatus(id, status);
+        return ResponseEntity.ok(ApiResponse.success("Payment status updated", response));
+    }
+
     @DeleteMapping("/{id}")
     @Operation(summary = "Cancel order")
     public ResponseEntity<ApiResponse<OrderResponse>> cancelOrder(@PathVariable Long id) {
