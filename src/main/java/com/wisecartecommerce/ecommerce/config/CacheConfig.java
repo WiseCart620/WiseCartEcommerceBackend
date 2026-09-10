@@ -21,7 +21,7 @@ public class CacheConfig {
                 "newArrivals", "topSelling", "categories",
                 "categoryTree", "homepageSections",
                 "reviews", "reviewSummary", "recentReviews",
-                "badgeColors"
+                "badgeColors", "infoNoteResolve"
         );
         manager.setCaffeine(Caffeine.newBuilder()
                 .expireAfterWrite(10, TimeUnit.MINUTES)
