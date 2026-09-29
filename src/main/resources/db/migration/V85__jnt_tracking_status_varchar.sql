@@ -1,0 +1,1 @@
+ALTER TABLE orders MODIFY jnt_tracking_status VARCHAR(30) NULL DEFAULT NULL;
