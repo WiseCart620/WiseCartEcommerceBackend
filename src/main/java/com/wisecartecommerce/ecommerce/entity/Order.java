@@ -7,7 +7,9 @@ import java.util.List;
 
 import org.hibernate.annotations.BatchSize;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import com.wisecartecommerce.ecommerce.util.OrderStatus;
 import com.wisecartecommerce.ecommerce.util.PaymentStatus;
@@ -131,7 +133,8 @@ public class Order {
     private LocalDateTime cancelledAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "jnt_tracking_status")
+    @JdbcTypeCode(SqlTypes.VARCHAR)
+    @Column(name = "jnt_tracking_status", length = 30)
     private com.wisecartecommerce.ecommerce.enums.Jnt_Tracking_Status jntTrackingStatus;
 
     @Column(name = "jnt_picked_up_at")

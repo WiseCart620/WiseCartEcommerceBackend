@@ -73,12 +73,13 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,
                         "/reviews/**", "/api/reviews/**")
                 .permitAll()
+                // Files: serving is public, uploading/deleting is not
+                .requestMatchers(HttpMethod.GET, "/files/**", "/api/files/**").permitAll()
                 // Other public endpoints
                 .requestMatchers(
                         "/error",
                         "/announcements/**", "/api/announcements/**",
                         "/webhooks/maya", "/api/webhooks/maya",
-                        "/files/**", "/api/files/**",
                         "/uploads/**", "/api/uploads/**",
                         "/public/**", "/api/public/**",
                         "/storefront/settings", "/api/storefront/settings",

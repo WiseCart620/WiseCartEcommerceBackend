@@ -129,12 +129,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
-        // File serving endpoints
-        if (uri.startsWith("/files")
+        // File serving endpoints (GET only; uploads/deletes need the JWT)
+        if ("GET".equalsIgnoreCase(method)
+                && (uri.startsWith("/files")
                 || uri.startsWith("/api/files")
                 || uri.startsWith("/uploads")
-                || uri.startsWith("/api/uploads")
-                || uri.startsWith("/uploads/") || uri.startsWith("/api/uploads/")) {
+                || uri.startsWith("/api/uploads"))) {
             return true;
         }
 
